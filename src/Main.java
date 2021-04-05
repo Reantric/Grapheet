@@ -1,21 +1,30 @@
 import core.Applet;
-import processing.core.*;
-import storage.Color;
-import storage.ColorType;
+import geom.Grid;
+import processing.core.PApplet;
+import processing.core.PFont;
+import processing.event.MouseEvent;
 
-import static processing.core.PConstants.P2D;
+import static geom.Grid.*;
 
 public class Main extends Applet {
-    public static final int WIDTH = 1000;
-    public static final int HEIGHT = 1000;
-    PGraphics p;
+    public static PFont myFont, italics;
+    public Grid plane;
+    public float e = 1;
+
+    public void setup(){
+        String commonPath = "src\\data\\";
+        myFont = createFont(commonPath + "cmunbmr.ttf", 150, true);
+        italics = createFont(commonPath + "cmunbmo.ttf", 150, true);
+        plane = new Grid(this);
+    }
+
 
     public void settings() {
         size(WIDTH, HEIGHT, P2D);
         smooth(8);
-        p = new PGraphics();
         //fullScreen();
     }
+
 
     public static void main(String[] passedArgs) {
         String[] appletArgs = new String[]{Main.class.getCanonicalName()};
@@ -28,21 +37,20 @@ public class Main extends Applet {
 
     public void init(){
         colorMode(HSB);
-        p.beginDraw();
-        p.fill(255);
-        p.circle(0,0,100);
-        p.endDraw();
         translate(width/2f,height/2f);
         background(0);
         shapeMode(CENTER);
         rectMode(CENTER);
-        //textAlign(CENTER);
+        textAlign(CENTER);
     }
 
     public void draw(){
+        scale(e);
         init();
-        fill(new Color(ColorType.CYAN));
-      //  board.draw();
-        image(p,0,0);
+        plane.draw();
+    }
+
+    public void mouseWheel(MouseEvent event) {
+        e += -0.07f * event.getCount();
     }
 }
