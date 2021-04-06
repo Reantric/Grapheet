@@ -2,10 +2,11 @@ package core;
 
 import processing.core.PVector;
 import util.Mapper;
+import util.map.Easable;
 import util.map.MapEase;
 import util.map.MapType;
 
-public class Vector extends PVector { // only dealing with 2D, 3D can fuck off
+public class Vector extends PVector implements Easable<PVector> { // only dealing with 2D, 3D can fuck off
     private long incrementor = 0;
     private float uneasedX, uneasedY;
     public Vector(float x, float y){
@@ -14,8 +15,20 @@ public class Vector extends PVector { // only dealing with 2D, 3D can fuck off
         uneasedY = this.y;
     }
 
-    public boolean easeTo(PVector o){ // for now, Quadratic Map
-        long incFinal = 100;
+    public Vector(float x) {
+        this(x,0);
+    }
+
+    public boolean easeTo(float o){
+        return this.easeTo(new Vector(o),(float) Math.sqrt(2)); // 1.4 seconds
+    }
+
+    public boolean easeTo(PVector o){
+        return this.easeTo(o,(float) Math.sqrt(2));
+    }
+
+    public boolean easeTo(PVector o, float time){ // for now, Quadratic Map, fix extra computation power for one dim easing
+        long incFinal = (long) (time*60);
         if (incrementor == incFinal) {
             this.uneasedX = this.x;
             this.uneasedY = this.y;
