@@ -9,7 +9,6 @@ import static geom.Grid.*;
 public class Main extends Applet {
     public static PFont myFont, italics;
     public Grid plane;
-    public float e = 1;
 
     public void setup(){
         String commonPath = "src\\data\\";
@@ -35,18 +34,7 @@ public class Main extends Applet {
         }
     }
 
-    public void init(){
-        colorMode(HSB);
-        translate(width/2f,height/2f);
-        background(0);
-        shapeMode(CENTER);
-        rectMode(CENTER);
-        textAlign(CENTER);
-    }
-
     public void draw(){
-        scale(e);
-        init();
         plane.draw();
     }
 
