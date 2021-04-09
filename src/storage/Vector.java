@@ -19,15 +19,20 @@ public class Vector extends PVector implements Easable<PVector> { // only dealin
         this(x,0);
     }
 
+    public Vector(Vector o) {
+        this.x = o.x;
+        this.y = o.y;
+    }
+
     public boolean easeTo(float o){
-        return this.easeTo(new Vector(o),(float) Math.sqrt(2)); // 1.4 seconds
+        return this.easeTo(new Vector(o),Math.sqrt(2)); // 1.4 seconds
     }
 
     public boolean easeTo(PVector o){
-        return this.easeTo(o,(float) Math.sqrt(2));
+        return this.easeTo(o,Math.sqrt(2));
     }
 
-    public boolean easeTo(PVector o, float time){ // for now, Quadratic Map, fix extra computation power for one dim easing
+    public boolean easeTo(PVector o, double time){ // for now, Quadratic Map, fix extra computation power for one dim easing
         long incFinal = (long) (time*60);
         if (incrementor == incFinal) {
             this.uneasedX = this.x;
@@ -40,4 +45,5 @@ public class Vector extends PVector implements Easable<PVector> { // only dealin
         this.y = (float) Mapper.map2(incrementor,0,incFinal,this.uneasedY,o.y, MapType.QUADRATIC, MapEase.EASE_IN_OUT);
         return false;
     }
+
 }

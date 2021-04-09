@@ -1,6 +1,7 @@
 package core;
 
 import processing.core.PApplet;
+import processing.core.PVector;
 import storage.Color;
 
 import java.lang.reflect.Constructor;
@@ -96,5 +97,9 @@ public class Applet extends PApplet {
 
     public void scale(double d){
         this.scale((float) d);
+    }
+
+    public void translate(PVector mult) {
+        this.translate(mult.x,mult.y);
     }
 }
