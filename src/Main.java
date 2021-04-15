@@ -19,7 +19,7 @@ public class Main extends Applet {
 
 
     public void settings() {
-        size(WIDTH, HEIGHT, P2D);
+        size(WIDTH, HEIGHT);
         smooth(8);
         //fullScreen();
     }
@@ -36,6 +36,7 @@ public class Main extends Applet {
 
     public void draw(){
         plane.draw();
+        //saveFrame("test/line-######.png");
     }
 
     public void mouseWheel(MouseEvent event) {
