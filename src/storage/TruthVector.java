@@ -11,4 +11,9 @@ public class TruthVector {
         this.x = false;
         this.y = true;
     }
+
+    @Override
+    public String toString(){
+        return String.format("[%s,%s]",x,y);
+    }
 }

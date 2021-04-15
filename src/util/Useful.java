@@ -72,7 +72,7 @@ public final class Useful {
     }
 
     public static long factorial(int number) {
-        var result = 1;
+        int result = 1;
 
         for (int factor = 2; factor <= number; factor++) {
             result *= factor;
