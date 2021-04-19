@@ -9,7 +9,7 @@ public class TruthVector {
 
     public TruthVector(){
         this.x = false;
-        this.y = true;
+        this.y = false;
     }
 
     @Override

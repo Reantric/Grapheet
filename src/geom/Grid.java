@@ -41,8 +41,9 @@ public class Grid {
         if (camera.x > incrementor.x)
             startMoving.x = true;
 
-        if (camera.y != startingCamera.y)
+        if (camera.y < 70-incrementor.y)
             startMoving.y = true;
+
     }
 
     private void generate(){
@@ -63,12 +64,20 @@ public class Grid {
                 p.strokeWeight(smallStroke);
             else
                 p.strokeWeight(largeStroke);
-            p.vertex(x,-spacing.y);
-            p.vertex(x,Math.min(400,spacing.y));
+
+            if (startMoving.y){
+                p.vertex(x,camera.y+spacing.y);
+                p.vertex(x,camera.y-spacing.y);
+            } else {
+                p.vertex(x,-spacing.y);
+                p.vertex(x,Math.min(400,spacing.y));
+            }
+
         }
 
-        float y = (int) floorAny(-HEIGHT/2f + camera.y + incrementor.y,incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
-        for (;y < (int) floorAny(HEIGHT/2f + camera.y,incrementor.y); y += incrementor.y){  // draws horiz lines, processing draws y up to down cuz flipped.
+        float y = (int) floorAny(-HEIGHT/2f + camera.y,incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
+        for (;y < (startMoving.y ? ((int) ceilAny(HEIGHT/2f + camera.y,incrementor.y)): ((int) floorAny(HEIGHT/2f + camera.y,incrementor.y))); y += incrementor.y){  // draws horiz lines, processing draws y up to down cuz flipped.
+            // abusing ternary operator
             if (Math.abs(y % (2*incrementor.y)) < EPSILON)
                 p.strokeWeight(smallStroke);
             else
@@ -86,7 +95,21 @@ public class Grid {
         p.stroke(0,0,255);
         p.strokeWeight(6);
         y += incrementor.y;
-        if (startMoving.x) { // no need to display y axis if its moving!
+        PApplet.println(startMoving);
+        if (!startMoving.x && !startMoving.y){
+            p.vertex(startingCamera.x + Math.max(-spacing.x, -800), y - incrementor.y); // x axis
+            p.vertex(startingCamera.x + spacing.x, y - incrementor.y);
+            p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),-spacing.y); // y axis
+            p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),Math.min(400,spacing.y));
+        } else if (startMoving.x && !startMoving.y) {
+            p.vertex(camera.x - spacing.x, y - incrementor.y); // x axis
+            p.vertex(camera.x + spacing.x, y - incrementor.y);
+        } else {
+            p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y + spacing.y); // y axis
+            p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y - spacing.y);
+        }
+
+     /*   if (startMoving.x) { // no need to display y axis if its moving!
             p.vertex(camera.x - spacing.x, y - incrementor.y); // x axis
             p.vertex(camera.x + spacing.x, y - incrementor.y);
         }
@@ -95,7 +118,7 @@ public class Grid {
             p.vertex(startingCamera.x + spacing.x, y - incrementor.y);
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),-spacing.y); // y axis
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),Math.min(400,spacing.y));
-        }
+        } */
         p.endShape();
     }
 
@@ -104,7 +127,7 @@ public class Grid {
         p.scale(e);
         updateMovementVec();
         camera.easeTo(new Vector(4000,-3000),20);
-        spacing.easeTo(new Vector(3*WIDTH/5f,3*HEIGHT/5f),1); // better to err on the side of caution
+        spacing.easeTo(new Vector(2*WIDTH/3f,2*HEIGHT/3f),1); // better to err on the side of caution
         p.translate(PVector.mult(camera,-1));
         generate();
        // processing.image(p,-WIDTH/2f,-HEIGHT/2f);
