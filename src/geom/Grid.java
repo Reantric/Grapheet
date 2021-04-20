@@ -3,10 +3,13 @@ package geom;
 
 import core.Applet;
 import processing.core.PApplet;
+import processing.core.PFont;
 import processing.core.PShape;
 import processing.core.PVector;
 import storage.TruthVector;
 import storage.Vector;
+
+import java.text.DecimalFormat;
 
 import static processing.core.PConstants.*;
 import static util.Useful.ceilAny;
@@ -16,15 +19,19 @@ public class Grid {
     public static final int WIDTH = 1920;
     public static final int HEIGHT = 1080;
     Applet p;
-    Vector camera = new Vector(0,-40),spacing = new Vector(200,200);
+    Vector camera = new Vector(0,0),spacing = new Vector(200,200);
     Vector startingCamera = new Vector(camera);
     Vector incrementor = new Vector(200,200);
     TruthVector startMoving = new TruthVector();
+    PFont font;
+    DecimalFormat df = new DecimalFormat("#.00");
     float scaleFactor = 1;
     public static float e = 1;
 
     public Grid(Applet p){
         this.p = p;
+        String commonPath = "src\\data\\";
+        font = p.createFont(commonPath + "cmunbmr.ttf", 150, true);
         // Empty for now because nothing much really happens
     }
 
@@ -34,25 +41,28 @@ public class Grid {
         p.background(0);
         //p.shapeMode(CENTER);
         p.rectMode(CENTER);
-        p.textAlign(CENTER);
+        p.textFont(font);
+        p.textSize(60);
     }
 
     private void updateMovementVec(){
         if (camera.x > incrementor.x)
             startMoving.x = true;
 
-        if (camera.y < 70-incrementor.y)
+        if (camera.y < 90-incrementor.y)
             startMoving.y = true;
 
     }
 
     private void generate(){
+
         float largeStroke = 5, smallStroke = 2.5f;
 
         p.stroke(0,0,95);
         p.noFill();
 
         p.beginShape(LINES);
+        p.textAlign(CENTER,CENTER);
         float x;
         if (startMoving.x)
             x = -incrementor.x + (int) floorAny(camera.x - WIDTH/2f + incrementor.x,incrementor.x);
@@ -73,8 +83,10 @@ public class Grid {
                 p.vertex(x,Math.min(400,spacing.y));
             }
 
+            p.text(PApplet.round(x),x,HEIGHT/2f - 95); // account for everything !
         }
 
+        p.textAlign(RIGHT,CENTER);
         float y = (int) floorAny(-HEIGHT/2f + camera.y,incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
         for (;y < (startMoving.y ? ((int) ceilAny(HEIGHT/2f + camera.y,incrementor.y)): ((int) floorAny(HEIGHT/2f + camera.y,incrementor.y))); y += incrementor.y){  // draws horiz lines, processing draws y up to down cuz flipped.
             // abusing ternary operator
@@ -91,6 +103,8 @@ public class Grid {
                 p.vertex(Math.max(-spacing.x, -800),y); // math.max here sugga
                 p.vertex(spacing.x,y);
             }
+
+            p.text(PApplet.round(y),120-WIDTH/2f,y-2); // account for everything !
         }
         p.stroke(0,0,255);
         p.strokeWeight(6);
@@ -104,29 +118,23 @@ public class Grid {
         } else if (startMoving.x && !startMoving.y) {
             p.vertex(camera.x - spacing.x, y - incrementor.y); // x axis
             p.vertex(camera.x + spacing.x, y - incrementor.y);
-        } else {
+        } else if (!startMoving.x){
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y + spacing.y); // y axis
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y - spacing.y);
         }
-
-     /*   if (startMoving.x) { // no need to display y axis if its moving!
-            p.vertex(camera.x - spacing.x, y - incrementor.y); // x axis
-            p.vertex(camera.x + spacing.x, y - incrementor.y);
-        }
-        else {
-            p.vertex(startingCamera.x + Math.max(-spacing.x, -800), y - incrementor.y); // x axis
-            p.vertex(startingCamera.x + spacing.x, y - incrementor.y);
-            p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),-spacing.y); // y axis
-            p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),Math.min(400,spacing.y));
-        } */
         p.endShape();
+        label();
+    }
+
+    public void label(){
+
     }
 
     public void draw(){
         init();
         p.scale(e);
         updateMovementVec();
-        camera.easeTo(new Vector(4000,-3000),20);
+       // camera.easeTo(new Vector(4000,-3000),20);
         spacing.easeTo(new Vector(2*WIDTH/3f,2*HEIGHT/3f),1); // better to err on the side of caution
         p.translate(PVector.mult(camera,-1));
         generate();
