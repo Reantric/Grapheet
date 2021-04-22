@@ -24,6 +24,11 @@ public class Vector extends PVector implements Easable<PVector> { // only dealin
         this.y = o.y;
     }
 
+    public Vector() {
+        this.x = 0;
+        this.y = 0;
+    }
+
     public boolean easeTo(float o){
         return this.easeTo(new Vector(o),Math.sqrt(2)); // 1.4 seconds
     }
