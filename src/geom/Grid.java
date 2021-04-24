@@ -113,7 +113,7 @@ public class Grid {
         p.stroke(0,0,255);
         p.strokeWeight(6);
         float y = end.y + incrementor.y;
-        PApplet.println(begin);
+      //  PApplet.println(begin);
 
         if (!startMoving.x && !startMoving.y){
             p.vertex(startingCamera.x + Math.max(-spacing.x, -800), y - incrementor.y); // x axis
@@ -134,18 +134,17 @@ public class Grid {
     public void label(){
         p.textAlign(CENTER,CENTER);
         for (float x = begin.x-incrementor.x; x < end.x+incrementor.x; x += incrementor.x){
-         /*   if (Math.abs(x % (2*incrementor.x)) < EPSILON)
-
-            else
-                p.textSize(50); */
-            if (Math.abs(x % (2*incrementor.x)) > EPSILON)
-                continue;
+            if (Math.abs(x % (2*incrementor.x)) < EPSILON)
             // -600 is the original begin.x
-            p.text(PApplet.round(scale.x*(x-(-600-incrementor.x))),x,HEIGHT/2f - 95); // account for everything !
+                p.text(PApplet.round(scale.x*(x-(-600-incrementor.x))),x,HEIGHT/2f - 95); // account for everything !
         }
         p.textAlign(RIGHT,CENTER);
         for (float y = begin.y; y < end.y; y+= incrementor.y){
-
+            if (Math.abs(y % (2*incrementor.y)) < EPSILON) {
+                // -600 is the original begin.y
+            //    if (startMoving.y)
+                p.text(PApplet.round(scale.y * -y - (-600 + incrementor.y)), 130 - WIDTH / 2f, y - 2); // account for everything !
+            }
         }
     }
 
@@ -153,7 +152,7 @@ public class Grid {
         init();
         p.scale(e);
         updateMovementVec();
-        camera.easeTo(new Vector(4000,0),40);
+        camera.easeTo(new Vector(1000,0),40);
         spacing.easeTo(new Vector(2*WIDTH/3f,2*HEIGHT/3f),1); // better to err on the side of caution
         p.translate(PVector.mult(camera,-1));
         generate();
