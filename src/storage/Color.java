@@ -1,5 +1,6 @@
 package storage;
 import java.util.Objects;
+
 public class Color {
     Subcolor hue, saturation, brightness, alpha;
 

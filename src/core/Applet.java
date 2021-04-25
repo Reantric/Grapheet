@@ -3,6 +3,7 @@ package core;
 import processing.core.PApplet;
 import processing.core.PVector;
 import storage.Color;
+import storage.ColorType;
 
 
 public class Applet extends PApplet {
@@ -25,5 +26,13 @@ public class Applet extends PApplet {
 
     public void translate(PVector mult) {
         this.translate(mult.x,mult.y);
+    }
+
+    public void fill(ColorType c) {
+        this.fill(new Color(c));
+    }
+
+    public void stroke(ColorType c) {
+        this.stroke(new Color(c));
     }
 }
