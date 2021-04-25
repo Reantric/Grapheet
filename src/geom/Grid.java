@@ -6,9 +6,7 @@ import processing.core.PApplet;
 import processing.core.PFont;
 import processing.core.PShape;
 import processing.core.PVector;
-import storage.TruthVector;
-import storage.Vector;
-
+import storage.*;
 import java.text.DecimalFormat;
 
 import static processing.core.PConstants.*;
@@ -41,7 +39,7 @@ public class Grid {
         p.translate(WIDTH/2f,HEIGHT/2f);
         p.background(0);
         //p.shapeMode(CENTER);
-        p.rectMode(CENTER);
+        p.rectMode(CORNERS);
         p.textFont(font);
         p.textSize(60);
     }
@@ -112,17 +110,16 @@ public class Grid {
         }
         p.stroke(0,0,255);
         p.strokeWeight(6);
-        float y = end.y + incrementor.y;
       //  PApplet.println(begin);
 
         if (!startMoving.x && !startMoving.y){
-            p.vertex(startingCamera.x + Math.max(-spacing.x, -800), y - incrementor.y); // x axis
-            p.vertex(startingCamera.x + spacing.x, y - incrementor.y);
+            p.vertex(startingCamera.x + Math.max(-spacing.x, -800), end.y); // x axis
+            p.vertex(startingCamera.x + spacing.x, end.y);
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),-spacing.y); // y axis
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),Math.min(400,spacing.y));
         } else if (startMoving.x && !startMoving.y) {
-            p.vertex(camera.x - spacing.x, y - incrementor.y); // x axis
-            p.vertex(camera.x + spacing.x, y - incrementor.y);
+            p.vertex(camera.x - spacing.x, end.y); // x axis
+            p.vertex(camera.x + spacing.x, end.y);
         } else if (!startMoving.x){
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y + spacing.y); // y axis
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y - spacing.y);
@@ -132,6 +129,7 @@ public class Grid {
     }
 
     public void label(){
+        PVector displacement = PVector.sub(camera,startingCamera);
         p.textAlign(CENTER,CENTER);
         for (float x = begin.x-incrementor.x; x < end.x+incrementor.x; x += incrementor.x){
             if (Math.abs(x % (2*incrementor.x)) < EPSILON)
@@ -139,11 +137,19 @@ public class Grid {
                 p.text(PApplet.round(scale.x*(x-(-600-incrementor.x))),x,HEIGHT/2f - 95); // account for everything !
         }
         p.textAlign(RIGHT,CENTER);
+
+
+        // y value rectangle
+        p.fill(ColorType.BLACK);
+        p.noStroke();
+        p.rect(-WIDTH/2f,-HEIGHT/2f,displacement.x + 153-WIDTH/2f,end.y + 20); // buffer
+        p.fill(ColorType.WHITE);
+
         for (float y = begin.y; y < end.y; y+= incrementor.y){
             if (Math.abs(y % (2*incrementor.y)) < EPSILON) {
                 // -600 is the original begin.y
-            //    if (startMoving.y)
-                p.text(PApplet.round(scale.y * -y - (-600 + incrementor.y)), 130 - WIDTH / 2f, y - 2); // account for everything !
+
+                p.text(PApplet.round(scale.y * -y - (-600 + incrementor.y)), displacement.x + 130 - WIDTH / 2f, y - 2); // account for everything !
             }
         }
     }
@@ -152,10 +158,11 @@ public class Grid {
         init();
         p.scale(e);
         updateMovementVec();
-        camera.easeTo(new Vector(1000,0),40);
+        camera.easeTo(new Vector(350,0),8);
         spacing.easeTo(new Vector(2*WIDTH/3f,2*HEIGHT/3f),1); // better to err on the side of caution
         p.translate(PVector.mult(camera,-1));
         generate();
+        PApplet.println(end);
    //     incrementor.add(new Vector(0.1f));
        // processing.image(p,-WIDTH/2f,-HEIGHT/2f);
     }
