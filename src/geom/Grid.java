@@ -4,14 +4,21 @@ package geom;
 import core.Applet;
 import processing.core.PApplet;
 import processing.core.PFont;
-import processing.core.PShape;
 import processing.core.PVector;
-import storage.*;
+import storage.ColorType;
+import storage.Graph;
+import storage.TruthVector;
+import storage.Vector;
+import util.Mapper;
+import util.map.MapEase;
+import util.map.MapType;
+
 import java.text.DecimalFormat;
 
 import static processing.core.PConstants.*;
 import static util.Useful.ceilAny;
 import static util.Useful.floorAny;
+import static util.map.MapType.LINEAR;
 
 public class Grid {
     public static final int WIDTH = 1920;
@@ -51,10 +58,13 @@ public class Grid {
     Vector incrementor = new Vector(200,200);
     Vector begin,end;
     Vector scale = new Vector(1,1);
+    PVector displacement = new Vector(0,0);
     TruthVector startMoving = new TruthVector();
     PFont font;
     DecimalFormat df = new DecimalFormat("#.00");
     public static float e = 1;
+
+    Graph graph = new Graph(Math::sin); // Test
 
     public Grid(Applet p){
         this.p = p;
@@ -73,19 +83,20 @@ public class Grid {
         p.textSize(60);
     }
 
-    private void updateMovementVec(){
+    private void update(){
         if (camera.x > 20)
             startMoving.x = true;
 
         if (camera.y < 170-incrementor.y)
             startMoving.y = true;
+
+        displacement = PVector.sub(camera,startingCamera);
     }
 
     private void generate(){
 
         float largeStroke = 5, smallStroke = 2.5f;
 
-        p.stroke(0,0,95);
         p.noFill();
 
         p.beginShape(LINES);
@@ -93,10 +104,15 @@ public class Grid {
         begin = new Vector(); end = new Vector();
 
 
-        begin.x = (int) floorAny(startingCamera.x - WIDTH/2f + 2*incrementor.x,incrementor.x);
+        begin.x = (float) ceilAny(displacement.x - WIDTH/2f,incrementor.x);
         end.x = (float) ceilAny(camera.x + WIDTH/2f,incrementor.x);
 
         for (float x = begin.x; x < end.x; x += incrementor.x){ // draws vert lines
+            if (x-displacement.x < 333-WIDTH/2f && startMoving.x)
+                p.stroke(0,0,95,(float) Mapper.map2(x-displacement.x,90-WIDTH/2f, 333-WIDTH/2f,0,255, MapType.QUADRATIC, MapEase.EASE_IN_OUT));
+            else
+                p.stroke(0,0,95);
+
             if (Math.abs(x % (2*incrementor.x)) < EPSILON)
                 p.strokeWeight(largeStroke);
             else
@@ -114,7 +130,7 @@ public class Grid {
         }
 
         begin.y = (int) floorAny(-HEIGHT/2f + camera.y,incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
-        end.y = (int) floorAny(HEIGHT/2f + camera.y,incrementor.y);
+        end.y = (int) ceilAny(HEIGHT/2f + camera.y,incrementor.y);
 
         for (float y = begin.y; y < end.y; y += incrementor.y){  // draws horiz lines, processing draws y up to down cuz flipped.
 
@@ -155,43 +171,62 @@ public class Grid {
     }
 
     public void label(){
-        PVector displacement = PVector.sub(camera,startingCamera);
-        p.textAlign(CENTER,CENTER);
+        // y value rectangle
+        p.fill(ColorType.BLACK);
+        p.noStroke();
+        p.rect(displacement.x-WIDTH/2f,displacement.y-HEIGHT/2f,displacement.x + 153-WIDTH/2f,displacement.y + HEIGHT/2f); // buffer
+        p.fill(ColorType.WHITE);
+
+        p.textAlign(RIGHT,CENTER);
+
+        p.stroke(ColorType.RED);
+        //p.line(-1000,HEIGHT/2f-150+displacement.y,1000,HEIGHT/2f-150+displacement.y); // Check y line remover IRT
+        for (float y = begin.y; y < end.y; y+= incrementor.y){
+            if (Math.abs(y % (2*incrementor.y)) < EPSILON && y-displacement.y < HEIGHT/2f - 155) {
+                // -600 is the original begin.y
+                p.text(PApplet.round(scale.y * -y - (-600 + incrementor.y)), displacement.x + 130 - WIDTH / 2f, y - 2); // account for everything !
+            }
+        }
+
         // x value rectangle
         p.fill(ColorType.BLACK);
         p.noStroke();
         p.rect(displacement.x -WIDTH/2f,displacement.y + HEIGHT/2f+100,displacement.x + WIDTH/2f,displacement.y + HEIGHT/2f-130); // buffer
         p.fill(ColorType.WHITE);
-
-        // y value rectangle
-        p.fill(ColorType.BLACK);
-        p.noStroke();
-        p.rect(-WIDTH/2f,displacement.y-HEIGHT/2f,displacement.x + 153-WIDTH/2f,displacement.y + HEIGHT/2f); // buffer
-        p.fill(ColorType.WHITE);
+        p.textAlign(CENTER,CENTER);
+        // Fade out first line(s) if it gets too close
+        p.stroke(ColorType.RED);
+        //p.line(333-WIDTH/2f + displacement.x,-1000,333-WIDTH/2f + displacement.x,1000);
 
         for (float x = begin.x; x < end.x+incrementor.x; x += incrementor.x){
+            if (x-displacement.x < 333-WIDTH/2f && startMoving.x)
+                if (x-displacement.x < 90-WIDTH/2f)
+                    p.fill(0,0,0,0);
+                else
+                    p.fill(0,0,255,(float) Mapper.map2(x-displacement.x,90-WIDTH/2f, 333-WIDTH/2f,0,255, MapType.QUADRATIC, MapEase.EASE_IN_OUT));
+            else
+                p.fill(ColorType.WHITE);
+
             if (Math.abs(x % (2*incrementor.x)) < EPSILON)
                 // -600 is the original begin.x
                 p.text(PApplet.round(scale.x*(x-(-600-incrementor.x))),x,displacement.y + HEIGHT/2f - 95); // account for everything !
         }
-        p.textAlign(RIGHT,CENTER);
+    }
 
-        for (float y = begin.y; y < end.y; y+= incrementor.y){
-            if (Math.abs(y % (2*incrementor.y)) < EPSILON) {
-                // -600 is the original begin.y
-                p.text(PApplet.round(scale.y * -y - (-600 + incrementor.y)), displacement.x + 130 - WIDTH / 2f, y - 2); // account for everything !
-            }
-        }
+    public void graph(){
+
     }
 
     public void draw(){
         init();
         p.scale(e);
-        updateMovementVec();
-        camera.easeTo(new Vector(1350,-200),20);
-        spacing.easeTo(new Vector(2*WIDTH/3f,2*HEIGHT/3f),1); // better to err on the side of caution
+        update();
         p.translate(PVector.mult(camera,-1));
         generate();
+        camera.easeTo(new Vector(3200,-3200),LINEAR,90);
+        spacing.easeTo(new Vector(2*WIDTH/3f,2*HEIGHT/3f),1); // better to err on the side of caution
+
+       // PApplet.println(begin,end);
    //     incrementor.add(new Vector(0.1f));
        // processing.image(p,-WIDTH/2f,-HEIGHT/2f);
     }

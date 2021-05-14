@@ -6,6 +6,9 @@ import util.map.Easable;
 import util.map.MapEase;
 import util.map.MapType;
 
+import static util.map.MapType.LINEAR;
+import static util.map.MapType.QUADRATIC;
+
 public class Vector extends PVector implements Easable<PVector> { // only dealing with 2D, 3D can fuck off
     private long incrementor = 0;
     private float uneasedX, uneasedY;
@@ -30,14 +33,18 @@ public class Vector extends PVector implements Easable<PVector> { // only dealin
     }
 
     public boolean easeTo(float o){
-        return this.easeTo(new Vector(o),Math.sqrt(2)); // 1.4 seconds
+        return this.easeTo(new Vector(o), QUADRATIC, Math.sqrt(2)); // 1.4 seconds
+    }
+
+    public boolean easeTo(PVector vector, double time) {
+        return easeTo(vector,QUADRATIC,time);
     }
 
     public boolean easeTo(PVector o){
-        return this.easeTo(o,Math.sqrt(2));
+        return this.easeTo(o, QUADRATIC, Math.sqrt(2));
     }
 
-    public boolean easeTo(PVector o, double time){ // for now, Quadratic Map, fix extra computation power for one dim easing
+    public boolean easeTo(PVector o, MapType type, double time){ // for now, Quadratic Map, fix extra computation power for one dim easing
         long incFinal = (long) (time*60);
         if (incrementor == incFinal) {
             this.uneasedX = this.x;
@@ -46,9 +53,10 @@ public class Vector extends PVector implements Easable<PVector> { // only dealin
             return true;
         }
         incrementor++;
-        this.x = (float) Mapper.map2(incrementor,0,incFinal,this.uneasedX,o.x, MapType.QUADRATIC, MapEase.EASE_IN_OUT);
-        this.y = (float) Mapper.map2(incrementor,0,incFinal,this.uneasedY,o.y, MapType.QUADRATIC, MapEase.EASE_IN_OUT);
+        this.x = (float) Mapper.map2(incrementor,0,incFinal,this.uneasedX,o.x, type, MapEase.EASE_IN_OUT);
+        this.y = (float) Mapper.map2(incrementor,0,incFinal,this.uneasedY,o.y, type, MapEase.EASE_IN_OUT);
         return false;
     }
+
 
 }
