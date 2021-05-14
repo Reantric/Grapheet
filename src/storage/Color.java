@@ -48,7 +48,7 @@ public class Color {
             }
             case GREEN -> {
                 hue = new Subcolor(107);
-                saturation = new Subcolor(0);
+                saturation = new Subcolor(255);
                 brightness = new Subcolor(255);
             }
             case MAGENTA -> {
