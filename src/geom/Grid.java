@@ -5,10 +5,7 @@ import core.Applet;
 import processing.core.PApplet;
 import processing.core.PFont;
 import processing.core.PVector;
-import storage.ColorType;
-import storage.Graph;
-import storage.TruthVector;
-import storage.Vector;
+import storage.*;
 import util.Mapper;
 import util.map.MapEase;
 import util.map.MapType;
@@ -31,6 +28,14 @@ public class Grid {
 
     public Vector getCamera() {
         return camera;
+    }
+
+    public Vector getIncrementor(){
+        return incrementor;
+    }
+
+    public PVector getDisplacement() {
+        return displacement;
     }
 
     public Vector getSpacing() {
@@ -57,14 +62,14 @@ public class Grid {
     Vector startingCamera = new Vector(camera);
     Vector incrementor = new Vector(200,200);
     Vector begin,end;
-    Vector scale = new Vector(1,1);
+    Vector scale = new Vector(1/99f,1/99f);
     PVector displacement = new Vector(0,0);
     TruthVector startMoving = new TruthVector();
     PFont font;
     DecimalFormat df = new DecimalFormat("#.00");
     public static float e = 1;
 
-    Graph graph = new Graph(Math::sin); // Test
+    Graph graph = new Graph(this,t -> 2*Math.sin(t),new Color(ColorType.GREEN)); // Test
 
     public Grid(Applet p){
         this.p = p;
@@ -167,6 +172,9 @@ public class Grid {
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y - spacing.y);
         }
         p.endShape();
+
+        graph();
+
         label();
     }
 
@@ -184,7 +192,7 @@ public class Grid {
         for (float y = begin.y; y < end.y; y+= incrementor.y){
             if (Math.abs(y % (2*incrementor.y)) < EPSILON && y-displacement.y < HEIGHT/2f - 155) {
                 // -600 is the original begin.y
-                p.text(PApplet.round(scale.y * -y - (-600 + incrementor.y)), displacement.x + 130 - WIDTH / 2f, y - 2); // account for everything !
+                p.text(PApplet.round(scale.y * (-y - (-600 + incrementor.y))), displacement.x + 130 - WIDTH / 2f, y - 2); // account for everything !
             }
         }
 
@@ -214,7 +222,7 @@ public class Grid {
     }
 
     public void graph(){
-
+        graph.draw();
     }
 
     public void draw(){
@@ -223,7 +231,7 @@ public class Grid {
         update();
         p.translate(PVector.mult(camera,-1));
         generate();
-        camera.easeTo(new Vector(3200,-3200),LINEAR,90);
+    //    camera.easeTo(new Vector(3200,-3200),LINEAR,90);
         spacing.easeTo(new Vector(2*WIDTH/3f,2*HEIGHT/3f),1); // better to err on the side of caution
 
        // PApplet.println(begin,end);
