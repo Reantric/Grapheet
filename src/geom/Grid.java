@@ -62,7 +62,7 @@ public class Grid {
     Vector startingCamera = new Vector(camera);
     Vector incrementor = new Vector(200,200);
     Vector begin,end;
-    Vector scale = new Vector(1/99f,1/99f);
+    Vector scale = new Vector(100,100);
     PVector displacement = new Vector(0,0);
     TruthVector startMoving = new TruthVector();
     PFont font;
@@ -92,9 +92,8 @@ public class Grid {
         if (camera.x > 20)
             startMoving.x = true;
 
-        if (camera.y < 170-incrementor.y)
-            startMoving.y = true;
-
+        startMoving.y = camera.y < 170-incrementor.y; // suppose camera goes up and down?
+        System.out.println(startMoving);
         displacement = PVector.sub(camera,startingCamera);
     }
 
@@ -165,8 +164,8 @@ public class Grid {
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),-spacing.y); // y axis
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),Math.min(400,spacing.y));
         } else if (startMoving.x && !startMoving.y) {
-            p.vertex(camera.x - spacing.x, end.y); // x axis
-            p.vertex(camera.x + spacing.x, end.y);
+            p.vertex(displacement.x - spacing.x, end.y); // x axis
+            p.vertex(displacement.x + spacing.x, end.y);
         } else if (!startMoving.x){
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y + spacing.y); // y axis
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y - spacing.y);
@@ -192,7 +191,7 @@ public class Grid {
         for (float y = begin.y; y < end.y; y+= incrementor.y){
             if (Math.abs(y % (2*incrementor.y)) < EPSILON && y-displacement.y < HEIGHT/2f - 155) {
                 // -600 is the original begin.y
-                p.text(PApplet.round(scale.y * (-y - (-600 + incrementor.y))), displacement.x + 130 - WIDTH / 2f, y - 2); // account for everything !
+                p.text(PApplet.round(1/scale.y * (-y - (-600 + incrementor.y))), displacement.x + 130 - WIDTH / 2f, y - 2); // account for everything !
             }
         }
 
@@ -217,7 +216,7 @@ public class Grid {
 
             if (Math.abs(x % (2*incrementor.x)) < EPSILON)
                 // -600 is the original begin.x
-                p.text(PApplet.round(scale.x*(x-(-600-incrementor.x))),x,displacement.y + HEIGHT/2f - 95); // account for everything !
+                p.text(PApplet.round(1/scale.x*(x-(-600-incrementor.x))),x,displacement.y + HEIGHT/2f - 95); // account for everything !
         }
     }
 
@@ -231,9 +230,12 @@ public class Grid {
         update();
         p.translate(PVector.mult(camera,-1));
         generate();
-    //    camera.easeTo(new Vector(3200,-3200),LINEAR,90);
+       // camera.easeTo(new Vector(320,-320),LINEAR,5);
         spacing.easeTo(new Vector(2*WIDTH/3f,2*HEIGHT/3f),1); // better to err on the side of caution
-
+        if (p.frameCount > 300)
+            camera.easeTo(new Vector(400,0),LINEAR,2);
+        else
+            camera.easeTo(new Vector(320,-20),LINEAR,2);
        // PApplet.println(begin,end);
    //     incrementor.add(new Vector(0.1f));
        // processing.image(p,-WIDTH/2f,-HEIGHT/2f);

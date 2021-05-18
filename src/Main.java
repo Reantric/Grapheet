@@ -36,7 +36,7 @@ public class Main extends Applet {
 
     public void draw(){
         plane.draw();
-        //saveFrame("test/line-######.png");
+       // saveFrame("test/line-######.png");
     }
 
     public void mouseWheel(MouseEvent event) {
