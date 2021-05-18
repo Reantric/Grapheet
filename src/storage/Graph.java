@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.function.Function;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static geom.Grid.HEIGHT;
 import static geom.Grid.WIDTH;
@@ -22,20 +23,22 @@ public class Graph { // Must store x values separately, this only holds y values
     public Color color;
     public String name;
     public Grid grid;
-    private static float distance = 1; // dont want to make final
+    public Function<Double,Double> function;
+    private static float distance = 0.3f; // dont want to make final
 
     public Graph(Grid grid, double[] pv, Color color, String name){
-        this.grid = grid
+        this.grid = grid;
         this.pointValues = pv;
         this.color = color;
         this.name = name;
     }
 
     public Graph(Grid grid, Function<Double, Double> function, Color color){
-       // this.p = grid.getProcessingInstance();
-        //this.pointValues = IntStream.range(0, (int) (8/distance)).asDoubleStream().map(t -> function.apply(t*distance)).toArray();
-        this(grid,IntStream.range(0, (int) (8/distance)).asDoubleStream().map(t -> function.apply(t*distance)).toArray(),color);
-        xValues = IntStream.range(0,(int) (8/distance)).asDoubleStream().toArray();
+        this.grid = grid;
+        this.color = color;
+        this.function = function;
+        initializeValues();
+        System.out.println(Arrays.toString(xValues));
         System.out.println(Arrays.toString(pointValues));
     }
 
@@ -44,19 +47,27 @@ public class Graph { // Must store x values separately, this only holds y values
     }
 
     public void draw(){
-        p.stroke(color);
+        grid.getProcessingInstance().shape(createGraphShape());
+   //     initializeValues();
+      //  distance *= 0.994f;
+    }
+
+    private void initializeValues(){
+        xValues = DoubleStream.iterate(0,t -> t + distance).limit(1 + (long) Math.ceil(8/distance)).toArray();
+        pointValues = Arrays.stream(xValues).map(function::apply).toArray();
     }
 
     private PShape createGraphShape(){
         Applet p = grid.getProcessingInstance();
+        Vector scale = grid.getScale();
         PVector displacement = grid.getDisplacement();
         PShape shape = p.createShape();
         shape.colorMode(HSB);
-        shape.stroke(color.getHue().getValue(),color.getBrightness().getValue(),color.getSaturation().getValue(),color.getAlpha().getValue());
         shape.beginShape(LINES);
+        shape.stroke(color.getHue().getValue(),color.getBrightness().getValue(),color.getSaturation().getValue(),color.getAlpha().getValue());
         for (int i = 1; i < xValues.length; i++){
-            shape.vertex(displacement.x + (float) xValues[i-1],(float) pointValues[i-1]);
-            shape.vertex(displacement.y + (float) xValues[i],(float) pointValues[i]);
+            shape.vertex(displacement.x + scale.x * (float) xValues[i-1],scale.y * (float) pointValues[i-1]);
+            shape.vertex(displacement.x + scale.x * (float) xValues[i],scale.y * (float) pointValues[i]);
         }
         shape.endShape();
         return shape;
