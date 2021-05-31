@@ -16,10 +16,13 @@ import static processing.core.PConstants.*;
 import static util.Useful.ceilAny;
 import static util.Useful.floorAny;
 import static util.map.MapType.LINEAR;
+import static util.map.MapType.QUADRATIC;
 
 public class Grid {
     public static final int WIDTH = 1920;
     public static final int HEIGHT = 1080;
+    public static final int X = 3;
+    public static final int Y = 5;
     Applet p;
 
     public Applet getProcessingInstance() {
@@ -62,7 +65,7 @@ public class Grid {
     Vector startingCamera = new Vector(camera);
     Vector incrementor = new Vector(200,200);
     Vector begin,end;
-    Vector scale = new Vector(100,100);
+    Vector scale = new Vector(200,200);
     PVector displacement = new Vector(0,0);
     TruthVector startMoving = new TruthVector();
     PFont font;
@@ -93,7 +96,7 @@ public class Grid {
             startMoving.x = true;
 
         startMoving.y = camera.y < 170-incrementor.y; // suppose camera goes up and down?
-        System.out.println(startMoving);
+
         displacement = PVector.sub(camera,startingCamera);
     }
 
@@ -133,7 +136,7 @@ public class Grid {
         //    p.text(PApplet.round(x),x,HEIGHT/2f - 95); // account for everything !
         }
 
-        begin.y = (int) floorAny(-HEIGHT/2f + camera.y,incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
+        begin.y = (int) ceilAny(-HEIGHT/2f + camera.y,incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
         end.y = (int) ceilAny(HEIGHT/2f + camera.y,incrementor.y);
 
         for (float y = begin.y; y < end.y; y += incrementor.y){  // draws horiz lines, processing draws y up to down cuz flipped.
@@ -159,21 +162,19 @@ public class Grid {
       //  PApplet.println(begin);
 
         if (!startMoving.x && !startMoving.y){
-            p.vertex(startingCamera.x + Math.max(-spacing.x, -800), end.y); // x axis
-            p.vertex(startingCamera.x + spacing.x, end.y);
+            p.vertex(startingCamera.x + Math.max(-spacing.x, -800), end.y-incrementor.y); // x axis
+            p.vertex(startingCamera.x + spacing.x, end.y-incrementor.y);
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),-spacing.y); // y axis
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),Math.min(400,spacing.y));
         } else if (startMoving.x && !startMoving.y) {
-            p.vertex(displacement.x - spacing.x, end.y); // x axis
-            p.vertex(displacement.x + spacing.x, end.y);
+            p.vertex(displacement.x - spacing.x, end.y-incrementor.y); // x axis
+            p.vertex(displacement.x + spacing.x, end.y-incrementor.y);
         } else if (!startMoving.x){
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y + spacing.y); // y axis
             p.vertex((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y - spacing.y);
         }
         p.endShape();
-
         graph();
-
         label();
     }
 
@@ -189,9 +190,13 @@ public class Grid {
         p.stroke(ColorType.RED);
         //p.line(-1000,HEIGHT/2f-150+displacement.y,1000,HEIGHT/2f-150+displacement.y); // Check y line remover IRT
         for (float y = begin.y; y < end.y; y+= incrementor.y){
-            if (Math.abs(y % (2*incrementor.y)) < EPSILON && y-displacement.y < HEIGHT/2f - 155) {
+            if (Math.abs(y % (2*incrementor.y)) < EPSILON) {
                 // -600 is the original begin.y
-                p.text(PApplet.round(1/scale.y * (-y - (-600 + incrementor.y))), displacement.x + 130 - WIDTH / 2f, y - 2); // account for everything !
+                String txt = textify(y,Y);
+                if (txt.equals("0"))
+                    p.text(txt, displacement.x + 130 - WIDTH / 2f, y - 20);
+                else
+                    p.text(txt, displacement.x + 130 - WIDTH / 2f, y - 2); // account for everything !
             }
         }
 
@@ -204,9 +209,13 @@ public class Grid {
         // Fade out first line(s) if it gets too close
         p.stroke(ColorType.RED);
         //p.line(333-WIDTH/2f + displacement.x,-1000,333-WIDTH/2f + displacement.x,1000);
-
+        // increment end because text needs to show up before line (super efficient line)
         for (float x = begin.x; x < end.x+incrementor.x; x += incrementor.x){
-            if (x-displacement.x < 333-WIDTH/2f && startMoving.x)
+            String txt = textify(x,X);
+            if (txt.equals("0"))
+                continue;
+
+            if (x-displacement.x < 333-WIDTH/2f && startMoving.x) // cant hurt now can it?
                 if (x-displacement.x < 90-WIDTH/2f)
                     p.fill(0,0,0,0);
                 else
@@ -216,12 +225,18 @@ public class Grid {
 
             if (Math.abs(x % (2*incrementor.x)) < EPSILON)
                 // -600 is the original begin.x
-                p.text(PApplet.round(1/scale.x*(x-(-600-incrementor.x))),x,displacement.y + HEIGHT/2f - 95); // account for everything !
+                p.text(txt,x,displacement.y + HEIGHT/2f - 95); // account for everything !
         }
     }
 
     public void graph(){
         graph.draw();
+    }
+
+    public String textify(float r, int XorY){
+        if (XorY == X)
+            return String.valueOf(PApplet.round(1/scale.x*(r-(-600-incrementor.x))));
+        return String.valueOf(PApplet.round(1/scale.y * (-r - (-600 + incrementor.y))));
     }
 
     public void draw(){
@@ -230,12 +245,8 @@ public class Grid {
         update();
         p.translate(PVector.mult(camera,-1));
         generate();
-       // camera.easeTo(new Vector(320,-320),LINEAR,5);
         spacing.easeTo(new Vector(2*WIDTH/3f,2*HEIGHT/3f),1); // better to err on the side of caution
-        if (p.frameCount > 300)
-            camera.easeTo(new Vector(400,0),LINEAR,2);
-        else
-            camera.easeTo(new Vector(320,-20),LINEAR,2);
+   //     camera.easeTo(new Vector(1200,-300),QUADRATIC,15);
        // PApplet.println(begin,end);
    //     incrementor.add(new Vector(0.1f));
        // processing.image(p,-WIDTH/2f,-HEIGHT/2f);
