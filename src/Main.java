@@ -19,7 +19,7 @@ public class Main extends Applet {
 
 
     public void settings() {
-        size(WIDTH, HEIGHT);
+        size(WIDTH, HEIGHT, P2D);
         smooth(8);
         //fullScreen();
     }
