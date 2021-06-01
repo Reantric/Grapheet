@@ -28,6 +28,7 @@ public class Graph { // Must store x values separately, this only holds y values
     public Grid grid;
     public Function<Double,Double> function;
     private static float distance = 0.004f; // dont want to make final
+    public static double incrementor = 0;
     public static double index = 0;
 
     public Graph(Grid grid, double[] pv, Color color, String name){
@@ -50,15 +51,16 @@ public class Graph { // Must store x values separately, this only holds y values
     }
 
     public void draw(){
-        grid.getProcessingInstance().shape(createGraphShape());
+      //  grid.getProcessingInstance().shape(createGraphShape());
+        drawLineShape();
    //     initializeValues();
-      //  distance *= 0.994f;
-        if (index < xValues.length)
-            index++;
+   //     distance *= 0.994f;
+       // if (incrementor < xValues.length)
+         //   incrementor++;
     }
 
     private void initializeValues(){
-        xValues = DoubleStream.iterate(0,t -> t + distance).limit(1 + (long) Math.ceil(20/distance)).toArray();
+        xValues = DoubleStream.iterate(0,t -> t + distance).limit(1 + (long) Math.ceil(2/distance)).toArray();
         pointValues = Arrays.stream(xValues).map(function::apply).toArray();
     }
 
@@ -84,6 +86,28 @@ public class Graph { // Must store x values separately, this only holds y values
         }
         shape.endShape();
         return shape;
+    }
+
+    /**
+     * To be used with P2D and P2D only (not sure about the benefits really besides that)
+     */
+    private void drawLineShape(){
+        Applet p = grid.getProcessingInstance();
+        p.strokeWeight(5.5f);
+        p.stroke(ColorType.GREEN);
+        Vector scale = grid.getScale();
+        TruthVector moving = grid.getMoving();
+        if (incrementor < 2/distance) // start moving once this is no longer true?
+            index = Mapper.map2(incrementor+=10,0,6/distance,0,6/distance, MapType.QUADRATIC, MapEase.EASE_IN_OUT);
+        else
+            index = 2/distance;
+      //      index = grid.getDisplacement().x * 1/scale.x * 1/distance;
+        System.out.println(index);
+        //1 + Math.max(0,(int) (index-300))
+        // Maybe later add Math.max(index,beginIndex) for moving stuffs!!
+        for (int i = 1; i < index; i++){
+            p.line(161-WIDTH/2f + scale.x * (float) xValues[i-1],400-scale.y * (float) pointValues[i-1],161-WIDTH/2f + scale.x * (float) xValues[i],400-scale.y * (float) pointValues[i]);
+        }
     }
 
     public void setPointValues(double[] pv){
