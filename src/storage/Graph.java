@@ -27,7 +27,7 @@ public class Graph { // Must store x values separately, this only holds y values
     public String name;
     public Grid grid;
     public Function<Double,Double> function;
-    private static float distance = 0.004f; // dont want to make final
+    private static float distance = 0.004f; // dont want to make final, distance between x
     public static double incrementor = 0;
     public static double index = 0;
 
