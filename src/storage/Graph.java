@@ -19,23 +19,27 @@ import static geom.Grid.WIDTH;
 import static processing.core.PConstants.HSB;
 import static processing.core.PConstants.LINES;
 
-public class Graph { // Must store x values separately, this only holds y values
-    // for efficiency!
+public class Graph {
     public static double[] xValues; // Set them here, but Graph methods do not touch this!
     public double[] pointValues;
     public Color color;
     public String name;
     public Grid grid;
     public Function<Double,Double> function;
-    private static float distance = 0.004f; // dont want to make final, distance between x
+    private static double distance = 0.004; // dont want to make final, distance between x
     public static double incrementor = 0;
     public static double index = 0;
+    public boolean nonNegative = true;
 
     public Graph(Grid grid, double[] pv, Color color, String name){
         this.grid = grid;
         this.pointValues = pv;
         this.color = color;
         this.name = name;
+        distance = xValues[1]-xValues[0]; // let's just assume for the sake of niceness that it is the same
+        // everywhere
+        System.out.println(xValues.length);
+        System.out.println(distance);
     }
 
     public Graph(Grid grid, Function<Double, Double> function, Color color){
@@ -50,6 +54,10 @@ public class Graph { // Must store x values separately, this only holds y values
         this(grid,pv,color,"");
     }
 
+    public static void setXValues(double[] xVals) {
+        Graph.xValues = xVals;
+    }
+
     public void draw(){
       //  grid.getProcessingInstance().shape(createGraphShape());
         drawLineShape();
@@ -59,8 +67,12 @@ public class Graph { // Must store x values separately, this only holds y values
          //   incrementor++;
     }
 
+    public static void update(){
+        incrementor += 0.2;
+    }
+
     private void initializeValues(){
-        xValues = DoubleStream.iterate(0,t -> t + distance).limit(1 + (long) Math.ceil(2/distance)).toArray();
+        xValues = DoubleStream.iterate(0,t -> t + distance).limit(1 + (long) Math.ceil(4/distance)).toArray();
         pointValues = Arrays.stream(xValues).map(function::apply).toArray();
     }
 
@@ -94,18 +106,19 @@ public class Graph { // Must store x values separately, this only holds y values
     private void drawLineShape(){
         Applet p = grid.getProcessingInstance();
         p.strokeWeight(5.5f);
-        p.stroke(ColorType.GREEN);
+        p.stroke(color);
         Vector scale = grid.getScale();
         TruthVector moving = grid.getMoving();
-        if (incrementor < 2/distance) // start moving once this is no longer true?
-            index = Mapper.map2(incrementor+=10,0,6/distance,0,6/distance, MapType.QUADRATIC, MapEase.EASE_IN_OUT);
+        if (incrementor < xValues.length) // start moving once this is no longer true?
+            index = Mapper.map2(incrementor,0,xValues.length,0,xValues.length, MapType.QUADRATIC, MapEase.EASE_IN_OUT);
         else
-            index = 2/distance;
+            index = xValues.length;
       //      index = grid.getDisplacement().x * 1/scale.x * 1/distance;
-        System.out.println(index);
+     //   p.println(index-1,xValues[(int) index-1], pointValues[(int) index-1]);
         //1 + Math.max(0,(int) (index-300))
         // Maybe later add Math.max(index,beginIndex) for moving stuffs!!
         for (int i = 1; i < index; i++){
+         //   if (pointValues[i] > 0 || !nonNegative) // IMPLY gate
             p.line(161-WIDTH/2f + scale.x * (float) xValues[i-1],400-scale.y * (float) pointValues[i-1],161-WIDTH/2f + scale.x * (float) xValues[i],400-scale.y * (float) pointValues[i]);
         }
     }
