@@ -46,7 +46,7 @@ public class Vector extends PVector implements Easable<PVector> { // only dealin
 
     public boolean easeTo(PVector o, MapType type, double time){ // for now, Quadratic Map, fix extra computation power for one dim easing
         long incFinal = (long) (time*60);
-        if (incrementor == incFinal) {
+        if (this.equals(o) || incrementor == incFinal) {
             this.uneasedX = this.x;
             this.uneasedY = this.y;
             incrementor = 0;

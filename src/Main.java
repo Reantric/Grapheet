@@ -1,4 +1,6 @@
+import com.hamoid.VideoExport;
 import core.Applet;
+import directions.Directions;
 import geom.Grid;
 import processing.core.PApplet;
 import processing.core.PFont;
@@ -8,20 +10,31 @@ import static geom.Grid.*;
 
 public class Main extends Applet {
     public static PFont myFont, italics;
-    public Grid plane;
+    public VideoExport videoExport;
+    public Directions directions;
 
     public void setup(){
         String commonPath = "src\\data\\";
         myFont = createFont(commonPath + "cmunbmr.ttf", 150, true);
         italics = createFont(commonPath + "cmunbmo.ttf", 150, true);
-        plane = new Grid(this);
+        directions = new Directions(this);
+        directions.init();
+       // plane = new Grid(this);
+
+        videoExport = new VideoExport(this,"test.mp4");
+        videoExport.setFfmpegPath("library\\ffmpeg.exe");
+        videoExport.setQuality(85,0);
+        videoExport.setFrameRate(60);
+        frameRate(60);
+     //   videoExport.startMovie();
     }
 
 
     public void settings() {
-        size(WIDTH, HEIGHT, P2D);
+        // size(WIDTH, HEIGHT, P2D);
+        fullScreen(P2D);
         smooth(8);
-        //fullScreen();
+
     }
 
 
@@ -35,7 +48,13 @@ public class Main extends Applet {
     }
 
     public void draw(){
-        plane.draw();
+        if (directions.execute()){ // if scene finishes, terminate!
+            System.out.println("Goodbye");
+            videoExport.endMovie();
+            //     exit();
+        }
+
+        videoExport.saveFrame();
        // saveFrame("test/line-######.png");
     }
 
