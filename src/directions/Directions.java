@@ -5,6 +5,7 @@ import geom.Grid;
 import storage.Color;
 import storage.ColorType;
 import storage.Graph;
+import storage.Vector;
 
 import java.util.Arrays;
 import java.util.stream.Stream;
@@ -57,6 +58,7 @@ public class Directions {
 
         plane.drawMainAxes();
         plane.label();
+        plane.getIncrementor().easeTo(new Vector(300,300),9);
         return step[1];
     }
 
