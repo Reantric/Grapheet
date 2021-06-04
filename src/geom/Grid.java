@@ -62,8 +62,8 @@ public class Grid {
 
     Vector camera = new Vector(0,0),spacing = new Vector(200,200);
     Vector startingCamera = new Vector(camera);
-    Vector incrementor = new Vector(400,200); // def 200,200
-    Vector begin,end;
+    Vector incrementor = new Vector(200,200), startingBegin; // def incrementor: 200,200
+    Vector begin = new Vector(),end = new Vector();
     Vector scale = new Vector(400,800);
     PVector displacement = new Vector(0,0);
     TruthVector startMoving = new TruthVector();
@@ -87,6 +87,7 @@ public class Grid {
         p.textFont(font);
         p.textSize(60);
         p.strokeCap(ROUND);
+        startingBegin = new Vector((float) ceilAny(displacement.x - WIDTH/2f,200),(int) floorAny(HEIGHT/2f + camera.y, 200));
     }
 
     private void update(){
@@ -104,11 +105,8 @@ public class Grid {
 
         p.noFill();
 
-        begin = new Vector(); end = new Vector();
-
-
-        begin.x = (float) ceilAny(displacement.x - WIDTH/2f,incrementor.x);
-        end.x = (float) ceilAny(camera.x + WIDTH/2f,incrementor.x);
+        begin.x = (float) ceilAny(displacement.x - WIDTH/2f,200);
+        end.x = (float) ceilAny(camera.x + WIDTH/2f,200);
 
         for (float x = begin.x; x < end.x; x += incrementor.x){ // draws vert lines
             if (x-displacement.x < 333-WIDTH/2f && startMoving.x)
@@ -116,7 +114,7 @@ public class Grid {
             else
                 p.stroke(0,0,95);
 
-            if (Math.abs(x % (2*incrementor.x)) < EPSILON)
+            if (Math.abs((x-begin.x) % (2*incrementor.x)) < EPSILON)
                 p.strokeWeight(largeStroke);
             else
                 p.strokeWeight(smallStroke);
@@ -128,12 +126,12 @@ public class Grid {
             }
         }
 
-        begin.y = (int) ceilAny(-HEIGHT/2f + camera.y,incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
-        end.y = (int) ceilAny(HEIGHT/2f + camera.y,incrementor.y);
+        begin.y = (int) floorAny(HEIGHT/2f + camera.y, 200);
+        end.y = (int) floorAny(-HEIGHT/2f + camera.y, incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
 
-        for (float y = begin.y; y < end.y; y += incrementor.y){  // draws horiz lines, processing draws y up to down cuz flipped.
 
-            if (Math.abs(y % (2*incrementor.y)) < EPSILON)
+        for (float y = begin.y; y > end.y; y -= incrementor.y){  // draws horiz lines, processing draws y up to down cuz flipped (so invert the bounds)
+            if (Math.abs((y-begin.y) % (2*incrementor.y)) < EPSILON)
                 p.strokeWeight(largeStroke);
             else
                 p.strokeWeight(smallStroke);
@@ -154,12 +152,12 @@ public class Grid {
         p.strokeWeight(6);
 
         if (!startMoving.x && !startMoving.y){
-            p.line(startingCamera.x + Math.max(-spacing.x, -800), end.y-incrementor.y,startingCamera.x + spacing.x, end.y-incrementor.y);
-            p.line((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),-spacing.y,(int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),Math.min(400,spacing.y));
+            p.line(startingCamera.x + Math.max(-spacing.x, -800), begin.y,startingCamera.x + spacing.x, begin.y);
+            p.line(begin.x,-spacing.y,begin.x,Math.min(400,spacing.y));
         } else if (startMoving.x && !startMoving.y) {
-            p.line(displacement.x - spacing.x, end.y-incrementor.y,displacement.x + spacing.x, end.y-incrementor.y);
+            p.line(displacement.x - spacing.x, begin.y,displacement.x + spacing.x, begin.y);
         } else if (!startMoving.x){
-            p.line((int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y + spacing.y,(int) floorAny(startingCamera.x - WIDTH/2f + incrementor.x,incrementor.x),camera.y - spacing.y);
+            p.line(begin.x,camera.y + spacing.y,begin.x,camera.y - spacing.y);
         }
     }
 
@@ -173,17 +171,17 @@ public class Grid {
         p.textAlign(RIGHT,CENTER);
 
         p.stroke(ColorType.RED);
-        for (float y = begin.y; y < end.y; y+= incrementor.y){
-            if (Math.abs(y % (2*incrementor.y)) < EPSILON) {
+        for (float y = begin.y; y > end.y; y -= incrementor.y){
+            if (Math.abs((y-begin.y) % (2*incrementor.y)) < EPSILON) {
                 // -600 is the original begin.y
                 float txt = textify(y,Y);
-                float yCoord = y - 2;
-                if (txt == 0)
+                float yCoord;
+                if (y == begin.y) // hmm?
                     yCoord = y - 20;
                 else
                     yCoord = y - 2;
 
-                p.text(df.format(txt), displacement.x + 130 - WIDTH / 2f, yCoord); // account for everything !
+                p.text(df.format(Math.abs(txt)), displacement.x + 130 - WIDTH / 2f, yCoord); // account for everything !
 
             }
         }
@@ -197,7 +195,7 @@ public class Grid {
         // Fade out first line(s) if it gets too close
         p.stroke(ColorType.RED);
         // increment end because text needs to show up before line (super efficient line)
-        for (float x = begin.x; x < end.x+incrementor.x; x += incrementor.x){
+        for (float x = begin.x; x < end.x; x += incrementor.x){
             float txt = textify(x,X);
             if (txt == 0)
                 continue;
@@ -210,7 +208,7 @@ public class Grid {
             else
                 p.fill(ColorType.WHITE);
 
-            if (Math.abs(x % (2*incrementor.x)) < EPSILON)
+            if (Math.abs((x-begin.x) % (2*incrementor.x)) < EPSILON) // there is something wrong with modulus!
                 // -600 is the original begin.x
                 p.text(df.format(txt),x,displacement.y + HEIGHT/2f - 95); // account for everything !
         }
@@ -218,8 +216,8 @@ public class Grid {
 
     public float textify(float r, int XorY){
         if (XorY == X)
-            return 1/scale.x*(r-(-600-incrementor.x));
-        return 1/scale.y * (-r - (-600 + incrementor.y));
+            return 1/scale.x * (r-startingBegin.x); // begin.x ORIGINAL
+        return -1/scale.y * (r-startingBegin.y); // begin.y ORIGINAL
     }
 
     public boolean draw(){

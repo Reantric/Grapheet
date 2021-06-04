@@ -26,13 +26,13 @@ public class Main extends Applet {
         videoExport.setQuality(85,0);
         videoExport.setFrameRate(60);
         frameRate(60);
-     //   videoExport.startMovie();
+        //videoExport.startMovie();
     }
 
 
     public void settings() {
         // size(WIDTH, HEIGHT, P2D);
-        fullScreen(P2D);
+        fullScreen();
         smooth(8);
 
     }
@@ -60,5 +60,12 @@ public class Main extends Applet {
 
     public void mouseWheel(MouseEvent event) {
         e += -0.07f * event.getCount();
+    }
+
+    public void keyPressed() {
+        if (key == 'q') {
+            videoExport.endMovie();
+            exit();
+        }
     }
 }
