@@ -32,9 +32,8 @@ public class Main extends Applet {
 
     public void settings() {
         // size(WIDTH, HEIGHT, P2D);
-        fullScreen();
+        fullScreen(P2D);
         smooth(8);
-
     }
 
 

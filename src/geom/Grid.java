@@ -62,7 +62,7 @@ public class Grid {
 
     Vector camera = new Vector(0,0),spacing = new Vector(200,200);
     Vector startingCamera = new Vector(camera);
-    Vector incrementor = new Vector(200,200), startingBegin; // def incrementor: 200,200
+    Vector incrementor = new Vector(203.8f,200), startingBegin; // def incrementor: 200,200 // 203.8 fails
     Vector begin = new Vector(),end = new Vector();
     Vector scale = new Vector(400,800);
     PVector displacement = new Vector(0,0);
@@ -114,7 +114,7 @@ public class Grid {
             else
                 p.stroke(0,0,95);
 
-            if (Math.abs((x-begin.x) % (2*incrementor.x)) < EPSILON)
+            if (Math.abs(Math.IEEEremainder(x-begin.x, 2*incrementor.x)) < EPSILON)
                 p.strokeWeight(largeStroke);
             else
                 p.strokeWeight(smallStroke);
@@ -131,7 +131,7 @@ public class Grid {
 
 
         for (float y = begin.y; y > end.y; y -= incrementor.y){  // draws horiz lines, processing draws y up to down cuz flipped (so invert the bounds)
-            if (Math.abs((y-begin.y) % (2*incrementor.y)) < EPSILON)
+            if (Math.abs(Math.IEEEremainder(y-begin.y, 2*incrementor.y)) < EPSILON)
                 p.strokeWeight(largeStroke);
             else
                 p.strokeWeight(smallStroke);
@@ -172,8 +172,8 @@ public class Grid {
 
         p.stroke(ColorType.RED);
         for (float y = begin.y; y > end.y; y -= incrementor.y){
-            if (Math.abs((y-begin.y) % (2*incrementor.y)) < EPSILON) {
-                // -600 is the original begin.y
+            if (Math.abs(Math.IEEEremainder(y-begin.y, 2*incrementor.y)) < EPSILON) {
+                // -600 is the original begin.y <--- dont trust anything idk
                 float txt = textify(y,Y);
                 float yCoord;
                 if (y == begin.y) // hmm?
@@ -195,7 +195,7 @@ public class Grid {
         // Fade out first line(s) if it gets too close
         p.stroke(ColorType.RED);
         // increment end because text needs to show up before line (super efficient line)
-        for (float x = begin.x; x < end.x; x += incrementor.x){
+        for (float x = begin.x; x < end.x; x += incrementor.x){ // STORE THESE AS INT AND DO CALC
             float txt = textify(x,X);
             if (txt == 0)
                 continue;
@@ -208,7 +208,8 @@ public class Grid {
             else
                 p.fill(ColorType.WHITE);
 
-            if (Math.abs((x-begin.x) % (2*incrementor.x)) < EPSILON) // there is something wrong with modulus!
+            p.println(txt,x-begin.x,Math.IEEEremainder(x-begin.x, 2*incrementor.x));
+            if (Math.abs(Math.IEEEremainder(x-begin.x, 2*incrementor.x)) < EPSILON)
                 // -600 is the original begin.x
                 p.text(df.format(txt),x,displacement.y + HEIGHT/2f - 95); // account for everything !
         }

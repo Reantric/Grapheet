@@ -58,7 +58,7 @@ public class Directions {
 
         plane.drawMainAxes();
         plane.label();
-        plane.getIncrementor().easeTo(new Vector(300,300),9);
+      //  plane.getIncrementor().easeTo(new Vector(300,300),9);
         return step[1];
     }
 
