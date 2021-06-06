@@ -108,7 +108,9 @@ public class Grid {
         begin.x = (float) ceilAny(displacement.x - WIDTH/2f,200);
         end.x = (float) ceilAny(camera.x + WIDTH/2f,200);
 
-        for (float x = begin.x; x < end.x; x += incrementor.x){ // draws vert lines
+        float ender = (end.x-begin.x)/incrementor.x;
+        for (int i = 0; i < ender; i++){ // draws vert lines
+            float x = begin.x + i*incrementor.x;
             if (x-displacement.x < 333-WIDTH/2f && startMoving.x)
                 p.stroke(0,0,95,(float) Mapper.map2(x-displacement.x,90-WIDTH/2f, 333-WIDTH/2f,0,255, MapType.QUADRATIC, MapEase.EASE_IN_OUT));
             else
@@ -129,8 +131,9 @@ public class Grid {
         begin.y = (int) floorAny(HEIGHT/2f + camera.y, 200);
         end.y = (int) floorAny(-HEIGHT/2f + camera.y, incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
 
-
-        for (float y = begin.y; y > end.y; y -= incrementor.y){  // draws horiz lines, processing draws y up to down cuz flipped (so invert the bounds)
+        ender = (begin.y-end.y)/incrementor.y;
+        for (int j = 0; j < ender; j++){  // draws horiz lines, processing draws y up to down cuz flipped (so invert the bounds)
+            float y = begin.y - j*incrementor.y;
             if (Math.abs(Math.IEEEremainder(y-begin.y, 2*incrementor.y)) < EPSILON)
                 p.strokeWeight(largeStroke);
             else
@@ -171,7 +174,9 @@ public class Grid {
         p.textAlign(RIGHT,CENTER);
 
         p.stroke(ColorType.RED);
-        for (float y = begin.y; y > end.y; y -= incrementor.y){
+        float ender = (begin.y-end.y)/incrementor.y; // remember y's flipped!
+        for (int j = 0; j < ender; j++){
+            float y = begin.y - j*incrementor.y;
             if (Math.abs(Math.IEEEremainder(y-begin.y, 2*incrementor.y)) < EPSILON) {
                 // -600 is the original begin.y <--- dont trust anything idk
                 float txt = textify(y,Y);
@@ -195,7 +200,9 @@ public class Grid {
         // Fade out first line(s) if it gets too close
         p.stroke(ColorType.RED);
         // increment end because text needs to show up before line (super efficient line)
-        for (float x = begin.x; x < end.x; x += incrementor.x){ // STORE THESE AS INT AND DO CALC
+        ender = (end.x-begin.x)/incrementor.x;
+        for (int i = 0; i < ender; i++){
+            float x = begin.x + i*incrementor.x;
             float txt = textify(x,X);
             if (txt == 0)
                 continue;
@@ -208,7 +215,6 @@ public class Grid {
             else
                 p.fill(ColorType.WHITE);
 
-            p.println(txt,x-begin.x,Math.IEEEremainder(x-begin.x, 2*incrementor.x));
             if (Math.abs(Math.IEEEremainder(x-begin.x, 2*incrementor.x)) < EPSILON)
                 // -600 is the original begin.x
                 p.text(df.format(txt),x,displacement.y + HEIGHT/2f - 95); // account for everything !
