@@ -1,72 +1,46 @@
 package directions;
 
 import core.Applet;
-import geom.Grid;
-import storage.Color;
-import storage.ColorType;
-import storage.Graph;
-import storage.Vector;
+import util.Useful;
 
-import java.util.Arrays;
-import java.util.stream.Stream;
+import java.io.File;
+import java.lang.reflect.InvocationTargetException;
+import java.util.*;
 
 public class Directions {
-    public Grid plane;
-    protected Applet window;
-    public boolean[] step = new boolean[100];
-    public Graph[] graphs;
-    public Color[] colorWheel;
+    public static List<Scene> allScenes = new ArrayList<>(); // Order must be preserved!
 
-    public Directions(Applet window){
-        this.window = window;
-    }
+    public static void init(Applet window) throws NoSuchMethodException, IllegalAccessException, InvocationTargetException, InstantiationException {
+        File[] files = new File(".\\src\\directions\\subscene").listFiles();
 
-    public void init(){
-        plane = new Grid(window);
-        String[] strings = window.loadStrings("src\\data\\datas.csv");
-        ColorType[] colorTypes = ColorType.values();
-        colorWheel = new Color[colorTypes.length];
-        for (int u = 0; u < colorTypes.length; u++)
-            colorWheel[u] = new Color(colorTypes[u]);
+        if (files != null)
+            for (File file : files) {
+                if (file.isFile()) { // Assuming folders?
+                    Class<?> c;
+                    try {
+                        c = Class.forName("directions.subscene." + Useful.removeExtension(file.getName()));
+                    } catch (ClassNotFoundException e) {
+                        System.out.println(file.getName() + " is not a java file!");
+                        continue;
+                    }
+                    if (Scene.class.isAssignableFrom(c)) {
+                        Scene scene = (Scene) c.getDeclaredConstructor(Applet.class).newInstance(window);
+                        if (scene.runScene())
+                            allScenes.add(scene);
+                    }
 
-        System.out.println(Arrays.toString(colorTypes));
-        String[] header = strings[0].split(",");
-        int dataLen = strings.length-1;
-        int yValLen = header.length-1;
-        graphs = new Graph[yValLen];
-        double[] xValues = new double[dataLen];
-        double[][] yValues = new double[yValLen][dataLen];
-        for (int c = 1; c <= dataLen; c++){
-            String[] data = strings[c].split(",");
-            xValues[c-1] = Double.parseDouble(data[0]);
-            for (int r = 1; r <= yValLen; r++){
-                yValues[r-1][c-1] = Double.parseDouble(data[r]);
+                }
             }
-        }
 
-        Graph.setXValues(xValues);
-        for (int i = 0; i < yValLen; i++){
-            graphs[i] = new Graph(plane,yValues[i], colorWheel[i % colorWheel.length],"John");
-        }
-        //System.out.println(Arrays.deepToString(yValues));
+        System.out.println(allScenes);
     }
 
-    public boolean execute(){
-        step[0] = plane.draw();
-        if (step[0])
-            step[1] = this.graph(); // Combine these together, elim terminate method
-
-        plane.drawMainAxes();
-        plane.label();
-      //  plane.getIncrementor().easeTo(new Vector(300,300),9);
-        return step[1];
-    }
-
-    private boolean graph(){
-        for (Graph g: graphs){
-            g.draw();
+    public static boolean directions() {
+        //call the scenes here
+        for (Scene s : allScenes) {
+            if (!s.execute())
+                return false;
         }
-        Graph.update();
-        return Graph.index >= 4/0.004f-0.6f;
+        return true;
     }
 }

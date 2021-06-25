@@ -6,6 +6,8 @@ import processing.core.PApplet;
 import processing.core.PFont;
 import processing.event.MouseEvent;
 
+import java.lang.reflect.InvocationTargetException;
+
 import static geom.Grid.*;
 
 public class Main extends Applet {
@@ -17,16 +19,18 @@ public class Main extends Applet {
         String commonPath = "src\\data\\";
         myFont = createFont(commonPath + "cmunbmr.ttf", 150, true);
         italics = createFont(commonPath + "cmunbmo.ttf", 150, true);
-        directions = new Directions(this);
-        directions.init();
-       // plane = new Grid(this);
+        try {
+            Directions.init(this);
+        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | InstantiationException noSuchMethodException) {
+            noSuchMethodException.printStackTrace();
+        }
 
         videoExport = new VideoExport(this,"test.mp4");
         videoExport.setFfmpegPath("library\\ffmpeg.exe");
         videoExport.setQuality(85,0);
         videoExport.setFrameRate(60);
         frameRate(60);
-        //videoExport.startMovie();
+        videoExport.startMovie();
     }
 
 
@@ -47,15 +51,26 @@ public class Main extends Applet {
     }
 
     public void draw(){
-        if (directions.execute()){ // if scene finishes, terminate!
+        init();
+        if (Directions.directions()){ // if all scenes finishes, terminate!
             System.out.println("Goodbye");
             videoExport.endMovie();
-            //     exit();
-        }
-
-        videoExport.saveFrame();
+            exit();
+        } else
+            videoExport.saveFrame();
        // saveFrame("test/line-######.png");
     }
+
+    private void init(){
+        colorMode(HSB);
+        translate(WIDTH/2f,HEIGHT/2f);
+        background(0);
+        shapeMode(CENTER);
+        rectMode(CORNERS);
+        strokeCap(ROUND);
+        ellipseMode(CENTER);
+    }
+
 
     public void mouseWheel(MouseEvent event) {
         e += -0.07f * event.getCount();

@@ -8,7 +8,7 @@ summedRandomNumbers = np.row_stack([np.sum(np.random.rand(it,rand),axis=1) for r
 #RandomNumbers *= multiplierCoefficients
 
 f = lambda k,v: np.fromiter((np.mean(k > a) for a in v),dtype=float,count=len(v))
-x = np.linspace(0,3,10*12+1)
+x = np.linspace(0,3,3000)
 y = np.column_stack([f(b,x) for b in summedRandomNumbers])
 
 np.savetxt("../data/datas.csv",np.column_stack((x,y)),fmt="%.5f",delimiter=",",header=f"x,{','.join(map(str,numOfRandAdders))}",comments="")
