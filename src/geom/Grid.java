@@ -60,11 +60,13 @@ public class Grid {
         return startMoving;
     }
 
-    Vector camera = new Vector(0,0),spacing = new Vector(200,200);
+    Vector camera = new Vector(0,-15),spacing = new Vector(200,200);
     Vector startingCamera = new Vector(camera);
-    Vector incrementor = new Vector(203.8f,200), startingBegin; // def incrementor: 200,200 // 203.8 fails
+    Vector incrementor = new Vector(250,200);
+    Vector startingBegin = new Vector((float) ceilAny(startingCamera.x - WIDTH/2f,250),(int) floorAny(HEIGHT/2f + startingCamera.y, 200));
+    // def incrementor: 200,200 // 203.8 fails
     Vector begin = new Vector(),end = new Vector();
-    Vector scale = new Vector(400,800);
+    Vector scale = new Vector(500,800);
     PVector displacement = new Vector(0,0);
     TruthVector startMoving = new TruthVector();
     PFont font;
@@ -82,12 +84,12 @@ public class Grid {
         p.colorMode(HSB);
         p.translate(WIDTH/2f,HEIGHT/2f);
         p.background(0);
-        //p.shapeMode(CENTER);
+        p.shapeMode(CENTER);
         p.rectMode(CORNERS);
         p.textFont(font);
         p.textSize(60);
         p.strokeCap(ROUND);
-        startingBegin = new Vector((float) ceilAny(displacement.x - WIDTH/2f,200),(int) floorAny(HEIGHT/2f + camera.y, 200));
+        p.ellipseMode(CENTER);
     }
 
     private void update(){
@@ -105,8 +107,8 @@ public class Grid {
 
         p.noFill();
 
-        begin.x = (float) ceilAny(displacement.x - WIDTH/2f,200);
-        end.x = (float) ceilAny(camera.x + WIDTH/2f,200);
+        begin.x = (float) ceilAny(displacement.x - WIDTH/2f,250);
+        end.x = (float) ceilAny(camera.x + WIDTH/2f,250);
 
         float ender = (end.x-begin.x)/incrementor.x;
         for (int i = 0; i < ender; i++){ // draws vert lines
@@ -116,7 +118,7 @@ public class Grid {
             else
                 p.stroke(0,0,95);
 
-            if (Math.abs(Math.IEEEremainder(x-begin.x, 2*incrementor.x)) < EPSILON)
+            if (Math.abs(Math.IEEEremainder(x-startingBegin.x, 2*incrementor.x)) < EPSILON)
                 p.strokeWeight(largeStroke);
             else
                 p.strokeWeight(smallStroke);
@@ -134,7 +136,7 @@ public class Grid {
         ender = (begin.y-end.y)/incrementor.y;
         for (int j = 0; j < ender; j++){  // draws horiz lines, processing draws y up to down cuz flipped (so invert the bounds)
             float y = begin.y - j*incrementor.y;
-            if (Math.abs(Math.IEEEremainder(y-begin.y, 2*incrementor.y)) < EPSILON)
+            if (Math.abs(Math.IEEEremainder(y-startingBegin.y, 2*incrementor.y)) < EPSILON)
                 p.strokeWeight(largeStroke);
             else
                 p.strokeWeight(smallStroke);
@@ -177,7 +179,7 @@ public class Grid {
         float ender = (begin.y-end.y)/incrementor.y; // remember y's flipped!
         for (int j = 0; j < ender; j++){
             float y = begin.y - j*incrementor.y;
-            if (Math.abs(Math.IEEEremainder(y-begin.y, 2*incrementor.y)) < EPSILON) {
+            if (Math.abs(Math.IEEEremainder(y-startingBegin.y, 2*incrementor.y)) < EPSILON) {
                 // -600 is the original begin.y <--- dont trust anything idk
                 float txt = textify(y,Y);
                 float yCoord;
@@ -215,7 +217,7 @@ public class Grid {
             else
                 p.fill(ColorType.WHITE);
 
-            if (Math.abs(Math.IEEEremainder(x-begin.x, 2*incrementor.x)) < EPSILON)
+            if (Math.abs(Math.IEEEremainder(x-startingBegin.x, 2*incrementor.x)) < EPSILON)
                 // -600 is the original begin.x
                 p.text(df.format(txt),x,displacement.y + HEIGHT/2f - 95); // account for everything !
         }

@@ -68,7 +68,7 @@ public class Graph {
     }
 
     public static void update(){
-        incrementor += 0.2;
+        incrementor += xValues.length/200f;
     }
 
     private void initializeValues(){
