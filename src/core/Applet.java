@@ -1,14 +1,9 @@
 package core;
 
-import org.apache.commons.beanutils.BeanUtils;
 import processing.core.PApplet;
-import processing.core.PConstants;
-import processing.core.PShape;
 import processing.core.PVector;
 import storage.Color;
 import storage.ColorType;
-
-import java.lang.reflect.InvocationTargetException;
 
 
 public class Applet extends PApplet {
