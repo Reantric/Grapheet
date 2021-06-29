@@ -1,29 +1,27 @@
 package directions.subscene;
 
 import core.Applet;
-import core.Shape;
 import directions.Scene;
-import directions.subscene.generateTree.AilunNode;
 import directions.subscene.generateTree.AilunTree;
 import processing.core.PShape;
-import storage.Vector;
+import text.ImmutableLaTeX;
 
-import java.util.List;
-
-import static processing.core.PConstants.*;
+import static processing.core.PConstants.CORNER;
 
 public class GenerateTree extends Scene {
     AilunTree a;
+    ImmutableLaTeX tex;
     public GenerateTree(Applet window) {
         super(window);
         this.a = new AilunTree(window,4);
+        tex = new ImmutableLaTeX(window,"$\\int_{1}^{2} f(x)dx$");
     }
 
     @Override
     public boolean execute() {
         init();
         PShape ailun = a.draw(4);
-        ailun.scale(1-window.frameCount/1000f);
+    //    ailun.scale(1-window.frameCount/1000f);
         window.shape(ailun,0,0);
         return false;
     }

@@ -6,6 +6,7 @@ import processing.core.PShape;
 import storage.Color;
 import storage.ColorType;
 import storage.Vector;
+import text.ImmutableLaTeX;
 import util.Mapper;
 
 import java.util.*;

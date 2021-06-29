@@ -4,6 +4,7 @@ import core.Applet;
 import processing.core.PApplet;
 import processing.core.PShape;
 import storage.Vector;
+import text.ImmutableLaTeX;
 
 import static processing.core.PConstants.*;
 
@@ -14,10 +15,12 @@ public class AilunNode {
     Vector pos;
     static Applet p;
     PShape nodeShape;
+    ImmutableLaTeX latex;
 
     public AilunNode(int val){
         this.val = val;
         nodeShape = p.createShape(GROUP);
+        latex = new ImmutableLaTeX(p,Integer.toString(val));
     }
 
     public void setPos(Vector pos){ this.pos = pos; }
@@ -47,7 +50,8 @@ public class AilunNode {
             groupShape.addChild(nodeShape);
             p.fill(255,0,255);
         }
-        p.text(val,pos.x,pos.y-10);
+        latex.draw(pos.x,pos.y-10);
+     //   p.text(val,pos.x,pos.y-10);
     }
 
     public String toString(){
