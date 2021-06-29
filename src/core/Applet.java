@@ -1,9 +1,11 @@
 package core;
 
 import processing.core.PApplet;
+import processing.core.PShape;
 import processing.core.PVector;
 import storage.Color;
 import storage.ColorType;
+import storage.Vector;
 
 
 public class Applet extends PApplet {
@@ -34,6 +36,10 @@ public class Applet extends PApplet {
 
     public void stroke(ColorType c) {
         this.stroke(new Color(c));
+    }
+
+    public void shape(PShape latex, Vector pos) {
+        this.shape(latex,pos.x,pos.y);
     }
 
     /*public Shape createShape() {
