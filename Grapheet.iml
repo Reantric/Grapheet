@@ -9,5 +9,7 @@
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" name="processing" level="project" />
     <orderEntry type="library" name="VideoExport" level="project" />
+    <orderEntry type="library" name="commons-beanutils-1.9.4" level="project" />
+    <orderEntry type="library" name="commons-logging-1.2" level="project" />
   </component>
 </module>
