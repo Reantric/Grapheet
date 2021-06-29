@@ -1,55 +1,78 @@
 package directions.subscene.generateTree;
 import core.Applet;
+import core.Shape;
 import processing.core.PApplet;
+import processing.core.PShape;
+import storage.Color;
+import storage.ColorType;
 import storage.Vector;
 import util.Mapper;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 
-import static processing.core.PConstants.CENTER;
+import static processing.core.PConstants.*;
 import static util.map.MapEase.EASE_IN;
 import static util.map.MapType.QUADRATIC;
 
 public class AilunTree {
     List<Integer> nodes = new ArrayList<>();
-    List<List<Node>> nodesPerDepth = new ArrayList<>();
+    public List<List<AilunNode>> nodesPerDepth = new ArrayList<>();
     Applet p;
+    List<Long> incrementor;
+    Vector pos = new Vector(0,-400);
+    PShape skeleton;
+
     public AilunTree(Applet p, int n){
-        Node.p = p;
+        AilunNode.p = p;
         createNodes(n);
+        this.incrementor = new ArrayList<>(Collections.nCopies(nodesPerDepth.size(), 0L));
         this.p = p;
         p.textAlign(CENTER,CENTER);
     }
 
-    public void draw(int depth){
-        int displacement = 100 * (int) Math.pow(1.7,nodesPerDepth.size()-1); // switch nodesPerDepth.size() with depth if scal
+    public PShape draw(int depth){
+        skeleton = p.createShape(GROUP);
+
+        int displacement = 100 * (int) Math.pow(1.7,nodesPerDepth.size()-1); // switch AilunNodesPerDepth.size() with depth if scal
         int spacing = displacement;
         for (int i = 0; i <= depth; i++){ // i represents current depth!
-            List<Node> child = nodesPerDepth.get(i);
+            List<AilunNode> child = nodesPerDepth.get(i);
+            long inc = incrementor.get(i);
+            float c = 1;
+            if (inc < 50) {
+                c = (float) Mapper.map2(inc,0,50,0,1,QUADRATIC,EASE_IN);
+                incrementor.set(i,inc+1);
+            }
             for (int j = 0; j < child.size(); j++){
-                Node n = child.get(j);
+                AilunNode n = child.get(j);
+
                 if (i == nodesPerDepth.size()-1)
                     n.setPos(new Vector(1.7f*(2*j)*spacing-displacement,-400+i*200));
                 else
                     n.setPos(new Vector((2*j + 1)*spacing-displacement,-400+i*200));
 
                 if (i > 0){
-                    List<Node> parent = nodesPerDepth.get(i-1);
-                    Vector parentPos = parent.get(j/2).pos;
+                    List<AilunNode> parents = nodesPerDepth.get(i-1);
+                    AilunNode parentAilunNode = parents.get(j/2);
+                    Vector parentPos = parentAilunNode.pos;
 
-                    float c = p.map(n.angleToMakeCirc,p.PI/2,p.TAU+p.PI/2,0,1);
-
-                    if (j % 2 == 0)
-                        p.line(parentPos.x-Node.radius/2,parentPos.y,c*n.pos.x + (1-c)*(parentPos.x-Node.radius/2),c*(n.pos.y-Node.radius/2) + (1-c)*parentPos.y);
-                    else
-                        p.line(parentPos.x+Node.radius/2,parentPos.y,c*n.pos.x + (1-c)*(parentPos.x+Node.radius/2),c*(n.pos.y-Node.radius/2) + (1-c)*parentPos.y);
+                    PShape lines;
+                    if (j % 2 == 0) {
+                        lines = p.createShape(LINE,parentPos.x - AilunNode.radius / 2, parentPos.y,c * n.pos.x + (1 - c) * (parentPos.x - AilunNode.radius / 2), c * (n.pos.y - AilunNode.radius / 2) + (1 - c) * parentPos.y);
+                        //p.line(parentPos.x - AilunNode.radius / 2, parentPos.y,c * n.pos.x + (1 - c) * (parentPos.x - AilunNode.radius / 2), c * (n.pos.y - AilunNode.radius / 2) + (1 - c) * parentPos.y);
+                    }
+                    else {
+                        lines = p.createShape(LINE,parentPos.x+AilunNode.radius/2,parentPos.y,c*n.pos.x + (1-c)*(parentPos.x+AilunNode.radius/2),c*(n.pos.y-AilunNode.radius/2) + (1-c)*parentPos.y);
+                        //p.line(parentPos.x+AilunNode.radius/2,parentPos.y,c*n.pos.x + (1-c)*(parentPos.x+AilunNode.radius/2),c*(n.pos.y-AilunNode.radius/2) + (1-c)*parentPos.y);
+                    }
+                    skeleton.addChild(lines);
                 }
-                n.draw();
+                n.draw(c,skeleton);
             }
             spacing /= 2;
-
         }
-
+        return skeleton;
     }
 
 
@@ -65,61 +88,53 @@ public class AilunTree {
 
         int L = 1;
         int h = 0;
-        nodesPerDepth.add(Collections.singletonList(new Node(0)));
+        AilunNode root = new AilunNode(0);
+        root.setPos(pos);
+        nodesPerDepth.add(Collections.singletonList(root));
+
+        int displacement = 100 * (int) Math.pow(1.7,n-1);
+        int spacing = displacement;
+
         for (int i = 1; i < nodes.size(); ){
             int j = i;
             int newL = 0;
             int newH = 0;
-            List<Node> currentDepthNodes = new ArrayList<>();
+            List<AilunNode> currentDepthNodes = new ArrayList<>();
             for (;j <= nodes.size() && j < i + 2*(L-h); j++){
                 int id = nodes.get(j);
                 if (id >= n)
                     newH++;
                 newL++;
-                currentDepthNodes.add(new Node(id));
+
+                AilunNode child = new AilunNode(id);
+                if (nodesPerDepth.size() == n)
+                    child.setPos(new Vector(1.7f*(2*(j-i))*spacing-2*displacement,-400+nodesPerDepth.size()*200));
+                else
+                    child.setPos(new Vector((2*(j-i) + 1)*spacing-2*displacement,-400+nodesPerDepth.size()*200));
+
+                currentDepthNodes.add(child);
+
+                if (nodesPerDepth.size() > 1){
+                //    AilunNode parent = nodesPerDepth.get(nodesPerDepth.size()-1).get((j-i)/2);
+                    // maybe have childPos depend on parent, idk?!
+                 //   PShape parentShape = parent.getNodeShape();
+                 //   parentShape.addChild(child.getNodeShape());
+                }
             }
+            spacing /= 2;
             nodesPerDepth.add(currentDepthNodes);
             i = j;
             L = newL;
             h = newH;
         }
-        p.println(nodesPerDepth);
-    }
-}
+        PApplet.println(nodesPerDepth);
 
-class Node {
-    static final int radius = 100;
-    int val;
-    float angleToMakeCirc = PApplet.PI/2;
-    long incrementor = 0;
-    Vector pos;
-    static Applet p;
-    public Node(int val){
-        this.val = val;
-    }
 
-    public void setPos(Vector pos){ this.pos = pos; }
-
-    public void draw(){
-        p.noFill();
-        p.strokeWeight(5);
-        p.stroke(255,0,255);
-        p.textSize(60);
-        if (incrementor < 50){
-            angleToMakeCirc = (float) Mapper.map2(incrementor++,0,50,p.PI/2,p.TAU+p.PI/2,QUADRATIC,EASE_IN);
-            p.arc(pos.x,pos.y,100,-100,p.PI/2,angleToMakeCirc);
-            p.fill(255,0,255,p.map(angleToMakeCirc,p.PI/2,p.TAU+p.PI/2,0,255));
-            p.text(val,pos.x,pos.y-10);
-        }
-        else {
-            angleToMakeCirc = p.TAU+p.PI/2;
-            p.circle(pos.x,pos.y,radius);
-            p.fill(255,0,255);
-            p.text(val,pos.x,pos.y-10);
-        }
-    }
-
-    public String toString(){
-        return String.valueOf(val);
+        /*for (List<AilunNode> lst: nodesPerDepth){
+            for (AilunNode node: lst){
+                System.out.print(node.pos + " ");
+            }
+            System.out.println();
+        } */
     }
 }
