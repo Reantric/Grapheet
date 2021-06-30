@@ -23,6 +23,7 @@ public class AilunTree {
     List<Long> incrementor;
     Vector pos = new Vector(0,-400);
     PShape skeleton;
+    boolean completedDraw = false;
 
     public AilunTree(Applet p, int n){
         AilunNode.p = p;
@@ -30,11 +31,15 @@ public class AilunTree {
         this.incrementor = new ArrayList<>(Collections.nCopies(nodesPerDepth.size(), 0L));
         this.p = p;
         p.textAlign(CENTER,CENTER);
+        skeleton = p.createShape(GROUP);
     }
 
-    public PShape draw(int depth){
-        skeleton = p.createShape(GROUP);
+    public boolean draw(int depth){
+        if (completedDraw)
+            return true;
 
+        skeleton = p.createShape(GROUP);
+        p.stroke(new Color(ColorType.WHITE));
         int displacement = 100 * (int) Math.pow(1.7,nodesPerDepth.size()-1); // switch AilunNodesPerDepth.size() with depth if scal
         int spacing = displacement;
         for (int i = 0; i <= depth; i++){ // i represents current depth!
@@ -44,14 +49,16 @@ public class AilunTree {
             if (inc < 50) {
                 c = (float) Mapper.map2(inc,0,50,0,1,QUADRATIC,EASE_IN);
                 incrementor.set(i,inc+1);
-            }
+            } else if (i == depth)
+                completedDraw = true;
+
             for (int j = 0; j < child.size(); j++){
                 AilunNode n = child.get(j);
 
-                if (i == nodesPerDepth.size()-1)
+              /*  if (i == nodesPerDepth.size()-1)
                     n.setPos(new Vector(1.7f*(2*j)*spacing-displacement,-400+i*200));
                 else
-                    n.setPos(new Vector((2*j + 1)*spacing-displacement,-400+i*200));
+                   n.setPos(new Vector((2*j + 1)*spacing-displacement,-400+i*200)); */
 
                 if (i > 0){
                     List<AilunNode> parents = nodesPerDepth.get(i-1);
@@ -73,7 +80,7 @@ public class AilunTree {
             }
             spacing /= 2;
         }
-        return skeleton;
+        return false;
     }
 
 
@@ -137,5 +144,9 @@ public class AilunTree {
             }
             System.out.println();
         } */
+    }
+
+    public PShape getSkeleton() {
+        return skeleton;
     }
 }
