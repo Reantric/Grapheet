@@ -38,14 +38,15 @@ public class ImmutableLaTeX {
     }
 
     public void draw(float x, float y) {
-        p.shapeMode(CENTER);
         p.fill(color);
         p.noStroke();
         p.shape(latex, x, y);
     }
-    // TODO: fix weird shape bug with align and make sure that when the skeleton is fully drawn, dont
-    // TODO: redo operations and remake, just use a "cached" version from before
 
+    public void setPos(float x, float y){
+        latex.translate(x,y);
+    }
+    
     public static String encode(String s){
         String b = s.replaceAll("\\s","");
        // System.out.println(b);

@@ -23,7 +23,10 @@ public class AilunNode {
         latex = new ImmutableLaTeX(p,Integer.toString(val));
     }
 
-    public void setPos(Vector pos){ this.pos = pos; }
+    public void setPos(Vector pos){
+        this.pos = pos;
+        latex.setPos(pos.x-24,pos.y-10-20); // once resetMatrix issue is worked out, move back down!
+    }
 
     public PShape getNodeShape(){
         return this.nodeShape;
@@ -35,12 +38,14 @@ public class AilunNode {
         p.stroke(255,0,255);
         p.textSize(60);
         angleToMakeCirc = PApplet.map(c,0,1,p.PI/2,p.TAU+p.PI/2);
+        PShape text = latex.getShape();
         if (c < 0.99){
             //p.arc(pos.x,pos.y,100,100,-angleToMakeCirc,-p.PI/2);
             nodeShape = p.createShape(ARC,pos.x,pos.y,100,100,-angleToMakeCirc,-p.PI/2); // constructor shit
             nodeShape.setStroke(p.color(0,0,255,255));
             groupShape.addChild(nodeShape);
-            p.fill(255,0,255,PApplet.map(angleToMakeCirc,p.PI/2,p.TAU+p.PI/2,0,255));
+            //p.fill(255,0,255,PApplet.map(angleToMakeCirc,p.PI/2,p.TAU+p.PI/2,0,255));
+            text.setFill(p.color(255,0,255,PApplet.map(angleToMakeCirc,p.PI/2,p.TAU+p.PI/2,0,255)));
         }
         else {
             angleToMakeCirc = p.TAU+p.PI/2;
@@ -48,10 +53,12 @@ public class AilunNode {
             nodeShape = p.createShape(ELLIPSE,pos.x,pos.y,radius,radius);
             nodeShape.setStroke(p.color(0,0,255,255));
             groupShape.addChild(nodeShape);
-            p.fill(255,0,255);
+            //p.fill(255,0,255);
+            text.setFill(p.color(255,0,255));
         }
-        latex.draw(pos.x,pos.y-10);
-     //   p.text(val,pos.x,pos.y-10);
+        groupShape.addChild(text);
+        //latex.draw(pos.x,pos.y-10);
+       // p.text(val,pos.x,pos.y-10);
     }
 
     public String toString(){

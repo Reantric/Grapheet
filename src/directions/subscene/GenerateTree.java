@@ -20,9 +20,14 @@ public class GenerateTree extends Scene {
     @Override
     public boolean execute() {
         init();
-        PShape ailun = a.draw(4);
-    //    ailun.scale(1-window.frameCount/1000f);
-        window.shape(ailun,0,0);
+        step[0] = a.draw(4);
+        PShape ailun = a.getSkeleton();
+        if (step[0]) {
+            System.out.println(window.frameCount);
+            ailun.scale(1 - window.frameCount / 1000f);
+        }
+        window.shape(ailun, 0, 0);
+        ailun.scale(1 / (1 - window.frameCount / 1000f)); // in the future replace with resetMatrix
         return false;
     }
 

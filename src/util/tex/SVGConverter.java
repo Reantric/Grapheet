@@ -48,7 +48,7 @@ public class SVGConverter {
 
         TeXFormula formula = new TeXFormula(latex);
         TeXIcon icon = formula.createTeXIcon(TeXConstants.STYLE_DISPLAY, size);
-        icon.setInsets(new Insets(5, 5, 5, 5));
+        icon.setInsets(new Insets(0, 0, 0, 0));
         g2.setSVGCanvasSize(new Dimension(icon.getIconWidth(), icon.getIconHeight()));
         g2.setColor(new Color(255, 255, 255, 0)); // Color.WHITE + Transparency
         // g2.fillRect(0, 0, icon.getIconWidth(), icon.getIconHeight());
