@@ -1,16 +1,13 @@
 package directions.subscene.generateTree;
 import core.Applet;
-import core.Shape;
 import processing.core.PApplet;
 import processing.core.PShape;
 import storage.Color;
 import storage.ColorType;
 import storage.Vector;
-import text.ImmutableLaTeX;
 import util.Mapper;
 
 import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static processing.core.PConstants.*;
 import static util.map.MapEase.EASE_IN;
@@ -24,8 +21,10 @@ public class AilunTree {
     Vector pos = new Vector(0,-400);
     PShape skeleton;
     boolean completedDraw = false;
+    int degree;
 
     public AilunTree(Applet p, int n){
+        this.degree = n;
         AilunNode.p = p;
         createNodes(n);
         this.incrementor = new ArrayList<>(Collections.nCopies(nodesPerDepth.size(), 0L));
@@ -40,8 +39,8 @@ public class AilunTree {
 
         skeleton = p.createShape(GROUP);
         p.stroke(new Color(ColorType.WHITE));
-        int displacement = 100 * (int) Math.pow(1.7,nodesPerDepth.size()-1); // switch AilunNodesPerDepth.size() with depth if scal
-        int spacing = displacement;
+      //  int displacement = 100 * (int) Math.pow(1.7,nodesPerDepth.size()-1); // switch AilunNodesPerDepth.size() with depth if scal
+      //  int spacing = displacement;
         for (int i = 0; i <= depth; i++){ // i represents current depth!
             List<AilunNode> child = nodesPerDepth.get(i);
             long inc = incrementor.get(i);
@@ -49,7 +48,7 @@ public class AilunTree {
             if (inc < 50) {
                 c = (float) Mapper.map2(inc,0,50,0,1,QUADRATIC,EASE_IN);
                 incrementor.set(i,inc+1);
-            } else if (i == depth)
+            } else if (i == degree) // depth for any subtree
                 completedDraw = true;
 
             for (int j = 0; j < child.size(); j++){
@@ -66,19 +65,16 @@ public class AilunTree {
                     Vector parentPos = parentAilunNode.pos;
 
                     PShape lines;
-                    if (j % 2 == 0) {
+                    if (j % 2 == 0)
                         lines = p.createShape(LINE,parentPos.x - AilunNode.radius / 2, parentPos.y,c * n.pos.x + (1 - c) * (parentPos.x - AilunNode.radius / 2), c * (n.pos.y - AilunNode.radius / 2) + (1 - c) * parentPos.y);
-                        //p.line(parentPos.x - AilunNode.radius / 2, parentPos.y,c * n.pos.x + (1 - c) * (parentPos.x - AilunNode.radius / 2), c * (n.pos.y - AilunNode.radius / 2) + (1 - c) * parentPos.y);
-                    }
-                    else {
+
+                    else
                         lines = p.createShape(LINE,parentPos.x+AilunNode.radius/2,parentPos.y,c*n.pos.x + (1-c)*(parentPos.x+AilunNode.radius/2),c*(n.pos.y-AilunNode.radius/2) + (1-c)*parentPos.y);
-                        //p.line(parentPos.x+AilunNode.radius/2,parentPos.y,c*n.pos.x + (1-c)*(parentPos.x+AilunNode.radius/2),c*(n.pos.y-AilunNode.radius/2) + (1-c)*parentPos.y);
-                    }
+
                     skeleton.addChild(lines);
                 }
                 n.draw(c,skeleton);
             }
-            spacing /= 2;
         }
         return false;
     }
@@ -100,7 +96,7 @@ public class AilunTree {
         root.setPos(pos);
         nodesPerDepth.add(Collections.singletonList(root));
 
-        int displacement = 100 * (int) Math.pow(1.7,n-1);
+        int displacement = 100 * (int) Math.pow(1.66,n-1);
         int spacing = displacement;
 
         for (int i = 1; i < nodes.size(); ){
@@ -148,5 +144,9 @@ public class AilunTree {
 
     public PShape getSkeleton() {
         return skeleton;
+    }
+
+    public int getDegree() {
+        return degree;
     }
 }

@@ -1,12 +1,12 @@
 package storage;
 
+import processing.core.PApplet;
 import processing.core.PVector;
 import util.Mapper;
 import util.map.Easable;
 import util.map.MapEase;
 import util.map.MapType;
 
-import static util.map.MapType.LINEAR;
 import static util.map.MapType.QUADRATIC;
 
 public class Vector extends PVector implements Easable<PVector> { // only dealing with 2D, 3D can fuck off
@@ -56,6 +56,10 @@ public class Vector extends PVector implements Easable<PVector> { // only dealin
         this.x = (float) Mapper.map2(incrementor,0,incFinal,this.uneasedX,o.x, type, MapEase.EASE_IN_OUT);
         this.y = (float) Mapper.map2(incrementor,0,incFinal,this.uneasedY,o.y, type, MapEase.EASE_IN_OUT);
         return false;
+    }
+
+    public Vector map(Vector start, Vector end, Vector startNew, Vector endNew){
+        return new Vector(PApplet.map(x,start.x,end.x,startNew.x,endNew.x),PApplet.map(y,start.y,end.y,startNew.y,endNew.y));
     }
 
 
