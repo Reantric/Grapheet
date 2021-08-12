@@ -13,7 +13,6 @@ import static geom.Grid.*;
 public class Main extends Applet {
     public static PFont myFont, italics;
     public VideoExport videoExport;
-    public Directions directions;
 
     public void setup(){
         String commonPath = "src\\data\\";
@@ -30,7 +29,7 @@ public class Main extends Applet {
         videoExport.setQuality(85,0);
         videoExport.setFrameRate(60);
         frameRate(60);
-        //videoExport.startMovie();
+      //  videoExport.startMovie();
     }
 
 

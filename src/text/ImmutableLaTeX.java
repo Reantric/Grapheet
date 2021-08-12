@@ -46,7 +46,7 @@ public class ImmutableLaTeX {
     public void setPos(float x, float y){
         latex.translate(x,y);
     }
-    
+
     public static String encode(String s){
         String b = s.replaceAll("\\s","");
        // System.out.println(b);
