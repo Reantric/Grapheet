@@ -100,14 +100,27 @@ public class RTree { // for now, its a bin tree
 
             for (int j = 0; j < children.size(); j++){
                 RTreeNode n = children.get(j);
-                Vector parentPos = n.getParent().getPos();
-                PShape lines;
-                if (j % 2 == 0) //TODO fix this
-                    lines = p.createShape(LINE,parentPos.x - RTreeNode.radius / 2, parentPos.y,c * n.pos.x + (1 - c) * (parentPos.x - RTreeNode.radius / 2), c * (n.pos.y - AilunNode.radius / 2) + (1 - c) * parentPos.y);
-                else
-                    lines = p.createShape(LINE,parentPos.x+AilunNode.radius/2,parentPos.y,c*n.pos.x + (1-c)*(parentPos.x+RTreeNode.radius/2),c*(n.pos.y-AilunNode.radius/2) + (1-c)*parentPos.y);
+                if (i > 0) {
+                    Vector parentPos = n.getParent().getPos();
+                    PShape lines;
+                    if (j % 2 == 0)
+                        lines = p.createShape(LINE, parentPos.x - RTreeNode.radius / 2, parentPos.y, c * n.pos.x + (1 - c) * (parentPos.x - RTreeNode.radius / 2), c * (n.pos.y - AilunNode.radius / 2) + (1 - c) * parentPos.y);
+                    else
+                        lines = p.createShape(LINE, parentPos.x + RTreeNode.radius / 2, parentPos.y, c * n.pos.x + (1 - c) * (parentPos.x + RTreeNode.radius / 2), c * (n.pos.y - AilunNode.radius / 2) + (1 - c) * parentPos.y);
 
+                    n.getParent().getNodeShape().addChild(lines);
+                }
+                n.draw(c);
             }
         }
+        return false;
+    }
+
+    public int getDegree() {
+        return this.degree;
+    }
+
+    public PShape getShape() {
+        return this.root.nodeShape;
     }
 }
