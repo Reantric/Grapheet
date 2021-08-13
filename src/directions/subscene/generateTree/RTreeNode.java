@@ -17,7 +17,7 @@ public class RTreeNode {
     Vector pos;
     PShape nodeShape;
     ImmutableLaTeX latex;
-    float radius = 100;
+    static float radius = 100;
     int val;
     static Applet p;
     float angleToMakeCirc = PApplet.PI/2;
@@ -26,14 +26,18 @@ public class RTreeNode {
         this.parent = parent;
         parent.addChildren(this);
         this.val = val;
-        nodeShape = p.createShape(GROUP);
+    //    nodeShape = p.createShape(GROUP);
         latex = new ImmutableLaTeX(p,Integer.toString(val));
     }
 
     public RTreeNode(int val){
         this.val = val;
-        nodeShape = p.createShape(GROUP);
+    //    nodeShape = p.createShape(GROUP);
         latex = new ImmutableLaTeX(p,Integer.toString(val));
+    }
+
+    public PShape getNodeShape(){
+        return this.nodeShape;
     }
 
     public void addChildren(RTreeNode child){
@@ -45,27 +49,34 @@ public class RTreeNode {
         latex.setPos(pos.x-24,pos.y-10-20);
     }
 
-    public void draw(float c, PShape groupShape){
+    public void draw(float c){ // only place where addChild should occur
         p.noFill();
         p.strokeWeight(5);
         p.stroke(255,0,255);
         p.textSize(60);
         angleToMakeCirc = PApplet.map(c,0,1,p.PI/2,p.TAU+p.PI/2);
+        resetNodeShape();
         PShape text = latex.getShape();
+        PShape circShape;
         if (c < 0.99){
-            nodeShape = p.createShape(ARC,pos.x,pos.y,100,100,-angleToMakeCirc,-p.PI/2); // constructor shit
-            nodeShape.setStroke(p.color(0,0,255,255));
-            parent.nodeShape.addChild(nodeShape);
+            circShape = p.createShape(ARC,pos.x,pos.y,100,100,-angleToMakeCirc,-p.PI/2); // constructor shit
+            circShape.setStroke(p.color(0,0,255,255));
             text.setFill(p.color(255,0,255,PApplet.map(angleToMakeCirc,p.PI/2,p.TAU+p.PI/2,0,255)));
         }
         else {
             angleToMakeCirc = p.TAU+p.PI/2;
-            nodeShape = p.createShape(ELLIPSE,pos.x,pos.y,radius,radius);
-            nodeShape.setStroke(p.color(0,0,255,255));
-            parent.nodeShape.addChild(nodeShape);
+            circShape = p.createShape(ELLIPSE,pos.x,pos.y,radius,radius);
+            circShape.setStroke(p.color(0,0,255,255));
             text.setFill(p.color(255,0,255));
         }
+        nodeShape.addChild(circShape);
         nodeShape.addChild(text);
+        if (parent != null)
+            parent.nodeShape.addChild(nodeShape);
+    }
+
+    public void resetNodeShape(){
+        this.nodeShape = p.createShape(GROUP);
     }
 
     public RTreeNode getParent(){
