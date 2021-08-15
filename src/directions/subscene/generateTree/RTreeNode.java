@@ -26,7 +26,6 @@ public class RTreeNode {
         this.parent = parent;
         parent.addChildren(this);
         this.val = val;
-    //    nodeShape = p.createShape(GROUP);
         latex = new ImmutableLaTeX(p,Integer.toString(val));
     }
 
@@ -49,7 +48,7 @@ public class RTreeNode {
         latex.setPos(pos.x-24,pos.y-10-20);
     }
 
-    public void draw(float c){ // only place where addChild should occur
+    public void draw(float c, PShape groupShape){ // only place where addChild should occur
         p.noFill();
         p.strokeWeight(5);
         p.stroke(255,0,255);
@@ -71,8 +70,7 @@ public class RTreeNode {
         }
         nodeShape.addChild(circShape);
         nodeShape.addChild(text);
-        if (parent != null)
-            parent.nodeShape.addChild(nodeShape);
+        groupShape.addChild(nodeShape);
     }
 
     public void resetNodeShape(){

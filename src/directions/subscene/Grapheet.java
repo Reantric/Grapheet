@@ -53,7 +53,7 @@ public class Grapheet extends Scene {
 
 
     @Override
-    public boolean execute() {
+    public boolean executeHelper() {
         step[0] = plane.draw();
         if (step[0])
             plane.getCamera().easeTo(new Vector(200,-200),6);

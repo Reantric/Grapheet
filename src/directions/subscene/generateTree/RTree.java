@@ -12,17 +12,18 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import static processing.core.PConstants.LINE;
+import static processing.core.PConstants.*;
 import static util.map.MapEase.EASE_IN;
 import static util.map.MapType.QUADRATIC;
 
-public class RTree { // for now, its a bin tree
-    RTreeNode root;
+public class RTree {
+    public RTreeNode root; // for now, its a bin tree
     int degree;
     Applet p;
     List<List<RTreeNode>> nodesPerDepth = new ArrayList<>();
     List<Long> incrementor;
     Vector pos = new Vector(0,-400);
+    PShape skeleton;
     boolean completedDraw;
 
     public RTree(Applet p,int degree){
@@ -31,7 +32,7 @@ public class RTree { // for now, its a bin tree
         this.degree = degree;
         createNodes(degree);
         this.incrementor = new ArrayList<>(Collections.nCopies(nodesPerDepth.size(), 0L));
-    } // skeleton = root.getNodeShape(); ...?
+    }
 
     private void createNodes(int n){
         List<Integer> buildTree = new ArrayList<>();
@@ -87,6 +88,7 @@ public class RTree { // for now, its a bin tree
         if (completedDraw)
             return true;
 
+        skeleton = p.createShape(GROUP);
         p.stroke(new Color(ColorType.WHITE));
         for (int i = 0; i <= depth; i++){
             List<RTreeNode> children = nodesPerDepth.get(i);
@@ -110,7 +112,7 @@ public class RTree { // for now, its a bin tree
 
                     n.getParent().getNodeShape().addChild(lines);
                 }
-                n.draw(c);
+                n.draw(c,skeleton);
             }
         }
         return false;
@@ -121,6 +123,10 @@ public class RTree { // for now, its a bin tree
     }
 
     public PShape getShape() {
-        return this.root.nodeShape;
+        return this.skeleton;
+    }
+
+    public RTreeNode getRoot(){
+        return this.root;
     }
 }
