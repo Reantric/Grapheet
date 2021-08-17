@@ -2,36 +2,32 @@ package directions.subscene;
 
 import core.Applet;
 import directions.Scene;
-import directions.subscene.generateTree.AilunTree;
+import directions.subscene.generateTree.RPath;
 import directions.subscene.generateTree.RTree;
 import directions.subscene.generateTree.RTreeNode;
+import directions.subscene.generateTree.TreePath;
 import processing.core.PShape;
 import storage.Color;
 import storage.ColorType;
 import storage.Vector;
 import text.ImmutableLaTeX;
 
-import java.util.function.Function;
+import java.util.ArrayList;
+import java.util.Collections;
 
-import static processing.core.PConstants.CORNER;
-import static processing.core.PConstants.PI;
+import static processing.core.PConstants.*;
 
 public class GenerateTree extends Scene {
-    AilunTree a;
     RTree ronald;
-    ImmutableLaTeX tex;
-    Vector i = new Vector();
-    Vector ang = new Vector(0);
-    float[] dest = {PI,0};
-    RTreeNode[] n;
+    RPath path;
 
     public GenerateTree(Applet window) {
         super(window);
-        this.a = new AilunTree(window,3);
-        System.out.println("big r");
-        this.ronald = new RTree(window,3);
-        tex = new ImmutableLaTeX(window,"$\\int_{1}^{2} f(x)dx$");
-        n = new RTreeNode[]{ronald.getRoot(), ronald.getRoot().getChildren().get(0), ronald.getRoot().getChildren().get(0).getChildren().get(0)};
+        ronald = new RTree(window,3);
+        ronald.init();
+        ronald.setColor(new Color(ColorType.CYAN));
+        path = new RPath(window,ronald.getRoot(), 0,1);
+        path.setColor(new Color(ColorType.MAGENTA));
     }
 
     @Override
@@ -39,20 +35,15 @@ public class GenerateTree extends Scene {
         init();
         step[0] = ronald.draw(3);
         PShape ailun = ronald.getShape();
-        ailun.scale(1); // well this is slightly awkward isnt it
-
+        ailun.scale(1);
         window.shape(ailun);
-        if (step[0]){ //TODO: Make Path, Left corresponds to 2, Right to 3, Text to 1, use enums maybe?
-            ailun.disableStyle();
-            for (RTreeNode ailu: n){
-                Color color = new Color(ColorType.MAGENTA);
-                window.stroke(color);
-                PShape bruh = ailu.getNodeShape();
-                window.shape(bruh.getChild(0));
-                window.shape(bruh.getChild(2));
-            }
-            ailun.enableStyle();
+        if (step[0]) {
+            step[1] = path.draw();
+            path.getShape().scale(1);
+            window.shape(path.getShape());
+            path.getShape().resetMatrix();
         }
+
 
 
       //  System.out.println(window.frameCount);
