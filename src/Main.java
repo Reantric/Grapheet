@@ -34,7 +34,7 @@ public class Main extends Applet {
 
 
     public void settings() {
-        // size(WIDTH, HEIGHT, P2D);
+        //size(WIDTH, HEIGHT, P2D);
         fullScreen(P2D);
         smooth(8);
     }
@@ -50,6 +50,7 @@ public class Main extends Applet {
     }
 
     public void draw(){
+        //beginRecord(SVG, "frame-####.svg");
         init();
         if (Directions.directions()){ // if all scenes finishes, terminate!
             System.out.println("Goodbye");
@@ -58,6 +59,7 @@ public class Main extends Applet {
         } else
             videoExport.saveFrame();
        // saveFrame("test/line-######.png");
+      //  endRecord();
     }
 
     private void init(){

@@ -18,20 +18,32 @@ import static util.map.MapType.QUADRATIC;
 
 public class RTree {
     public RTreeNode root; // for now, its a bin tree
-    int degree;
+    public int degree;
     Applet p;
-    List<List<RTreeNode>> nodesPerDepth = new ArrayList<>();
+    public List<List<RTreeNode>> nodesPerDepth = new ArrayList<>();
     List<Long> incrementor;
     Vector pos = new Vector(0,-400);
     PShape skeleton;
+    Color color;
     boolean completedDraw;
+    int[] directions;
+    int depthCount = 0;
 
     public RTree(Applet p,int degree){
         this.p = p;
         RTreeNode.p = p;
         this.degree = degree;
+    }
+
+    public void init(){
         createNodes(degree);
         this.incrementor = new ArrayList<>(Collections.nCopies(nodesPerDepth.size(), 0L));
+        color = new Color(ColorType.WHITE);
+    }
+
+
+    public void setColor(Color color){
+        this.color = color;
     }
 
     private void createNodes(int n){
@@ -84,12 +96,17 @@ public class RTree {
         PApplet.println(nodesPerDepth);
     }
 
+    public boolean draw(){
+        if (depthCount < degree && incrementor.get(depthCount) >= 50)
+            depthCount++;
+        return draw(depthCount);
+    }
+
     public boolean draw(int depth){
         if (completedDraw)
             return true;
-
         skeleton = p.createShape(GROUP);
-        p.stroke(new Color(ColorType.WHITE));
+        p.stroke(color);
         for (int i = 0; i <= depth; i++){
             List<RTreeNode> children = nodesPerDepth.get(i);
             long inc = incrementor.get(i);
@@ -100,19 +117,20 @@ public class RTree {
             } else if (i == degree) // depth for any subtree
                 completedDraw = true;
 
-            for (int j = 0; j < children.size(); j++){
-                RTreeNode n = children.get(j);
+            for (RTreeNode n : children) {
+                n.setColor(color);
                 if (i > 0) {
+
                     Vector parentPos = n.getParent().getPos();
                     PShape lines;
-                    if (j % 2 == 0)
-                        lines = p.createShape(LINE, parentPos.x - RTreeNode.radius / 2, parentPos.y, c * n.pos.x + (1 - c) * (parentPos.x - RTreeNode.radius / 2), c * (n.pos.y - AilunNode.radius / 2) + (1 - c) * parentPos.y);
-                    else
-                        lines = p.createShape(LINE, parentPos.x + RTreeNode.radius / 2, parentPos.y, c * n.pos.x + (1 - c) * (parentPos.x + RTreeNode.radius / 2), c * (n.pos.y - AilunNode.radius / 2) + (1 - c) * parentPos.y);
+                    float angle = PApplet.radians(36);
+                    float x = parentPos.x + RTreeNode.radius*PApplet.sin(angle)*(2*n.getChildNumber()-1);
+                    float y = parentPos.y + RTreeNode.radius*PApplet.cos(angle);
 
+                    lines = p.createShape(LINE, x, y, c * n.pos.x + (1 - c) * x, c * (n.pos.y - RTreeNode.radius) + (1 - c) * y);
                     n.getParent().getNodeShape().addChild(lines);
                 }
-                n.draw(c,skeleton);
+                n.draw(c, skeleton);
             }
         }
         return false;

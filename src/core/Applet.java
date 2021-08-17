@@ -18,6 +18,10 @@ public class Applet extends PApplet {
         this.fill(color.getHue().getValue(), color.getSaturation().getValue(), color.getBrightness().getValue(), color.getAlpha().getValue());
     }
 
+    public int color(Color color) {
+        return this.color(color.getHue().getValue(), color.getSaturation().getValue(), color.getBrightness().getValue(), color.getAlpha().getValue());
+    }
+
     public void tint(Color color) {
         this.tint(color.getHue().getValue(), color.getSaturation().getValue(), color.getBrightness().getValue(), color.getAlpha().getValue());
     }
