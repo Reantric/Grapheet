@@ -120,7 +120,6 @@ public class RTree {
             for (RTreeNode n : children) {
                 n.setColor(color);
                 if (i > 0) {
-
                     Vector parentPos = n.getParent().getPos();
                     PShape lines;
                     float angle = PApplet.radians(36);
