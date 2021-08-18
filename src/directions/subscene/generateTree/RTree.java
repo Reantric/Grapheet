@@ -102,9 +102,21 @@ public class RTree {
         return draw(depthCount);
     }
 
+    protected boolean workToDo(int depth){
+        boolean workToDo = false;
+        for (int j = depth+1; j <= degree; j++){ // look into possible optimization later
+            if (incrementor.get(j) > 0) {
+                workToDo = true;
+                incrementor.set(j, incrementor.get(j) - 1);
+            }
+        }
+        return workToDo;
+    }
+
     public boolean draw(int depth){
-        if (completedDraw)
+        if (completedDraw && !workToDo(depth))
             return true;
+
         skeleton = p.createShape(GROUP);
         p.stroke(color);
         for (int i = 0; i <= depth; i++){
@@ -114,7 +126,7 @@ public class RTree {
             if (inc < 50) {
                 c = (float) Mapper.map2(inc,0,50,0,1,QUADRATIC,EASE_IN);
                 incrementor.set(i,inc+1);
-            } else if (i == degree) // depth for any subtree
+            } else if (i == depth) // depth for any subtree
                 completedDraw = true;
 
             for (RTreeNode n : children) {

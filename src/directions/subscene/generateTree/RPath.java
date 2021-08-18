@@ -46,21 +46,35 @@ public class RPath extends RTree {
     }
 
     @Override
+    protected boolean workToDo(int depth){
+        boolean workToDo = false;
+        for (int j = depth+1; j <= 2*degree; j++){ // look into possible optimization later
+            if (incrementor.get(j) > 0) {
+                workToDo = true;
+                incrementor.set(j, incrementor.get(j) - 1);
+            }
+        }
+        return workToDo;
+    }
+
+    @Override
     public boolean draw(int xDepth){
-        if (completedDraw)
+        boolean workToDo = workToDo(xDepth);
+        p.println(incrementor,!workToDo);
+        if (incrementor.get(xDepth) >= 40 && !workToDo)
             return true;
+
         skeleton = p.createShape(GROUP);
         skeleton.setName("noLatex");
         p.stroke(color);
-        for (int i = 0; i <= xDepth; i++){
+        for (int i = 0; i <= xDepth; i++){ //TODO: Iterate from 0 to 2*degree so that the interpolation can actually reach the places it needs to and act in reverse
+            //TODO: Possible refactoring of the top into the bottom could also happen :) Check out Tree
             long inc = incrementor.get(i);
             float c = 1;
             if (inc < 40) {
                 c = (float) Mapper.map2(inc,0,40,0,1,QUADRATIC,EASE_IN);
                 incrementor.set(i,inc+1);
-            } else if (i == 2*degree) // depth for any subtree
-                completedDraw = true;
-
+            }
             RTreeNode n = nodesPerDepth.get((i+1)/2).get(0); // i % 2 == 1 means line!
             n.setColor(color);
             if (i % 2 == 1) {
@@ -77,5 +91,9 @@ public class RPath extends RTree {
                 n.draw(c, skeleton); // hmmm no need to draw the latex right?
         }
         return false;
+    }
+
+    public int getDepthCount(){
+        return this.depthCount;
     }
 }
