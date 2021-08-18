@@ -18,23 +18,17 @@ import static processing.core.PConstants.CORNER;
 public class GenerateTree extends Scene {
     RTree ronald;
     List<RPath> paths = new LinkedList<>();
+    List<PShape> acceptedPaths = new LinkedList<>();
 
     public GenerateTree(Applet window) {
         super(window);
         ronald = new RTree(window,3);
         ronald.init();
         //ronald.setColor(new Color(ColorType.CYAN));
-        RPath path = new RPath(window,ronald.getRoot(), 0,1);
+        RPath path = new RPath(window,ronald.getRoot(), 0,0,1);
         path.setColor(new Color(ColorType.RED));
         paths.add(path);
 
-        path = new RPath(window,ronald.getRoot(), 0,0,1);
-        path.setColor(new Color(ColorType.GREEN));
-        paths.add(path);
-
-        path = new RPath(window,ronald.getRoot(), 0,0,0);
-        path.setColor(new Color(ColorType.MAGENTA));
-        paths.add(path);
     }
 
     @Override
@@ -47,9 +41,21 @@ public class GenerateTree extends Scene {
         ailun.rotate(PApplet.sin(window.frameCount/40f)/10);
         window.shape(ailun);
         if (step[0]) {
-            step[1] = highlightPaths();
+            if (step[1])
+            {
+                paths.get(0).draw(2);
+                PShape shape = paths.get(0).getShape();
+                shape.scale(1.3f);
+                shape.translate(0,100);
+                shape.rotate(PApplet.sin(window.frameCount/40f)/10);
+                window.shape(shape);
+                shape.resetMatrix();
+            }
+            else
+                step[1] = highlightPaths();
         }
 
+        drawPaths();
         ailun.resetMatrix();
         return false;
     }
@@ -61,12 +67,19 @@ public class GenerateTree extends Scene {
             shape.scale(1.3f);
             shape.translate(0,100);
             shape.rotate(PApplet.sin(window.frameCount/40f)/10);
-            window.shape(shape);
-            shape.resetMatrix();
+            acceptedPaths.add(shape);
             if (!b)
                 return false;
         }
         return true;
+    }
+
+    private void drawPaths(){
+        for (PShape shape: acceptedPaths) {
+            window.shape(shape);
+            shape.resetMatrix();
+        }
+        acceptedPaths.clear();
     }
 
     @Override
