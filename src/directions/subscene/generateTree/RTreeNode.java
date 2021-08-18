@@ -34,21 +34,8 @@ public class RTreeNode {
         latex = new ImmutableLaTeX(p,Integer.toString(val));
     }
 
-    public RTreeNode(RTreeNode o, boolean root){
-        this.childNumber = o.getChildNumber();
-        this.pos = o.getPos();
-        this.val = o.val;
-        this.latex = o.latex;
-        if (!root)
-            this.parent = o.getParent();
-    }
-
     public void setColor(Color color){
         this.color = color;
-    }
-
-    public RTreeNode(RTreeNode o){
-        this(o,false);
     }
 
     public RTreeNode(int val){
@@ -90,7 +77,8 @@ public class RTreeNode {
             text.setFill(p.color(255,0,255));
         }
         nodeShape.addChild(circShape);
-        nodeShape.addChild(text);
+        if (groupShape.getName() == null || !groupShape.getName().equals("noLatex")) // horrible soln, find alternative later!
+            nodeShape.addChild(text);
         //nodeShape.disableStyle();
         groupShape.addChild(nodeShape);
     }
