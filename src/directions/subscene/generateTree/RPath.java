@@ -38,43 +38,47 @@ public class RPath extends RTree {
         System.out.println(nodesPerDepth);
         this.incrementor = new ArrayList<>(Collections.nCopies(nodesPerDepth.size()*2 - 1, 0L));
     }
+
     @Override
     public boolean draw(){
-        if (depthCount < 2*degree && incrementor.get(depthCount) >= 40)
+        if (depthCount < 2*degree && incrementor.get(depthCount) >= 40) {
             depthCount++;
+            completedDraw = false;
+        }
         return draw(depthCount);
     }
 
     @Override
-    protected boolean workToDo(int depth){
-        boolean workToDo = false;
-        for (int j = depth+1; j <= 2*degree; j++){ // look into possible optimization later
-            if (incrementor.get(j) > 0) {
-                workToDo = true;
-                incrementor.set(j, incrementor.get(j) - 1);
+    protected float assignInterpVal(int i, int xDepth){
+        long inc = incrementor.get(i);
+        float c = 0;
+        if (i <= xDepth) {
+            if (inc < 40) {
+                c = (float) Mapper.map2(inc, 0, 40, 0, 1, QUADRATIC, EASE_IN);
+                incrementor.set(i, inc + 1);
             }
+            else
+                c = 1;
         }
-        return workToDo;
+        else if (inc > 0) {
+            c = (float) Mapper.map2(inc, 0, 40, 0, 1, QUADRATIC, EASE_IN);
+            completedDraw = false;
+            incrementor.set(i, inc - 1);
+        }
+        return c;
     }
 
     @Override
     public boolean draw(int xDepth){
-        boolean workToDo = workToDo(xDepth);
-        p.println(incrementor,!workToDo);
-        if (incrementor.get(xDepth) >= 40 && !workToDo)
+        if (completedDraw && oldDepth == xDepth)
             return true;
 
+        p.println(incrementor,xDepth,2*degree);
         skeleton = p.createShape(GROUP);
         skeleton.setName("noLatex");
         p.stroke(color);
-        for (int i = 0; i <= xDepth; i++){ //TODO: Iterate from 0 to 2*degree so that the interpolation can actually reach the places it needs to and act in reverse
-            //TODO: Possible refactoring of the top into the bottom could also happen :) Check out Tree
-            long inc = incrementor.get(i);
-            float c = 1;
-            if (inc < 40) {
-                c = (float) Mapper.map2(inc,0,40,0,1,QUADRATIC,EASE_IN);
-                incrementor.set(i,inc+1);
-            }
+        for (int i = 0; i <= 2*degree; i++){
+            float c = assignInterpVal(i,xDepth);
             RTreeNode n = nodesPerDepth.get((i+1)/2).get(0); // i % 2 == 1 means line!
             n.setColor(color);
             if (i % 2 == 1) {
@@ -89,6 +93,10 @@ public class RPath extends RTree {
             }
             else
                 n.draw(c, skeleton); // hmmm no need to draw the latex right?
+        }
+        if ((xDepth == 2*degree && incrementor.get(xDepth) >= 40) || (xDepth < 2*degree && incrementor.get(xDepth+1) >= 40)) {
+            completedDraw = true;
+            oldDepth = xDepth;
         }
         return false;
     }
