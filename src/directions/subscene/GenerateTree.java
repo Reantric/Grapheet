@@ -34,7 +34,7 @@ public class GenerateTree extends Scene {
     @Override
     public boolean executeHelper() {
         init();
-        step[0] = ronald.draw(3);
+        step[0] = ronald.draw();
         PShape ailun = ronald.getShape();
         ailun.scale(1.3f);
         ailun.translate(0,100);

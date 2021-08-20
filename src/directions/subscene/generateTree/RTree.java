@@ -28,6 +28,7 @@ public class RTree {
     boolean completedDraw;
     int[] directions;
     int depthCount = 0;
+    int oldDepth = 0;
 
     public RTree(Applet p,int degree){
         this.p = p;
@@ -37,7 +38,7 @@ public class RTree {
 
     public void init(){
         createNodes(degree);
-        this.incrementor = new ArrayList<>(Collections.nCopies(nodesPerDepth.size(), 0L));
+        this.incrementor = new ArrayList<>(Collections.nCopies(nodesPerDepth.size()*2 - 1, 0L));
         color = new Color(ColorType.WHITE);
     }
 
@@ -97,27 +98,64 @@ public class RTree {
     }
 
     public boolean draw(){
-        if (depthCount < degree && incrementor.get(depthCount) >= 50)
+        if (depthCount < 2*degree && incrementor.get(depthCount) >= 50) {
             depthCount++;
+            completedDraw = false;
+        }
         return draw(depthCount);
     }
 
-    protected boolean workToDo(int depth){
-        boolean workToDo = false;
-        for (int j = depth+1; j <= degree; j++){ // look into possible optimization later
-            if (incrementor.get(j) > 0) {
-                workToDo = true;
-                incrementor.set(j, incrementor.get(j) - 1);
+    protected float assignInterpVal(int i, int xDepth){
+        long inc = incrementor.get(i);
+        float c = 0;
+        if (i <= xDepth) {
+            if (inc < 50) {
+                c = (float) Mapper.map2(inc, 0, 50, 0, 1, QUADRATIC, EASE_IN);
+                incrementor.set(i, inc + 1);
             }
+            else
+                c = 1;
         }
-        return workToDo;
+        else if (inc > 0) {
+            c = (float) Mapper.map2(inc, 0, 50, 0, 1, QUADRATIC, EASE_IN);
+            completedDraw = false;
+            incrementor.set(i, inc - 1);
+        }
+        return c;
     }
 
-    public boolean draw(int depth){
-        if (completedDraw && !workToDo(depth))
+    public boolean draw(int xDepth){
+        if (completedDraw && oldDepth == 2*xDepth)
             return true;
 
+        p.println(incrementor,2*xDepth,2*degree);
         skeleton = p.createShape(GROUP);
+        p.stroke(color);
+        for (int i = 0; i <= 2*degree; i++){
+            float c = assignInterpVal(i,xDepth);
+            RTreeNode n = nodesPerDepth.get((i+1)/2).get(0); // i % 2 == 1 means line!
+            n.setColor(color);
+            if (i % 2 == 1) {
+                Vector parentPos = n.getParent().getPos();
+                PShape lines;
+                float angle = PApplet.radians(36);
+                float x = parentPos.x + RTreeNode.radius*PApplet.sin(angle)*(2*n.getChildNumber()-1);
+                float y = parentPos.y + RTreeNode.radius*PApplet.cos(angle);
+
+                lines = p.createShape(LINE, x, y, c * n.pos.x + (1 - c) * x, c * (n.pos.y - RTreeNode.radius) + (1 - c) * y);
+                n.getParent().getNodeShape().addChild(lines);
+            }
+            else
+                n.draw(c, skeleton);
+        }
+        if ((2*xDepth == 2*degree && incrementor.get(2*xDepth) >= 50) || (2*xDepth < 2*degree && incrementor.get(2*xDepth+1) >= 50)) {
+            completedDraw = true;
+            oldDepth = xDepth;
+        }
+        return false;
+    }
+    /*
+    skeleton = p.createShape(GROUP);
         p.stroke(color);
         for (int i = 0; i <= depth; i++){
             List<RTreeNode> children = nodesPerDepth.get(i);
@@ -144,9 +182,8 @@ public class RTree {
                 n.draw(c, skeleton);
             }
         }
-        return false;
-    }
-
+        TODO: use this to fix the above code!
+     */
     public int getDegree() {
         return this.degree;
     }
