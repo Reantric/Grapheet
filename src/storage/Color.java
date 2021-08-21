@@ -1,8 +1,14 @@
 package storage;
+import util.map.MapEase;
+import util.map.MapType;
+
 import java.util.Objects;
+
+import static util.map.MapType.QUADRATIC;
 
 public class Color {
     Subcolor hue, saturation, brightness, alpha;
+    boolean interpStatus = true;
 
     public Color(float hue) {
         this(hue, 255, 255, 255);
@@ -110,6 +116,23 @@ public class Color {
         alpha.setValue(newAlpha);
     }
 
+    public boolean easeTo(Color color, MapType interpType, float time, MapEase easing) {
+        interpStatus = this.getHue().easeTo(color.getHue().getValue(), interpType, time, easing) &
+                this.getSaturation().easeTo(color.getSaturation().getValue(), interpType,time , easing) &
+                this.getBrightness().easeTo(color.getBrightness().getValue(), interpType, time, easing) &
+                this.getAlpha().easeTo(color.getAlpha().getValue(), interpType, time, easing);
+        return interpStatus;
+    }
+
+    public boolean easeTo(Color color) {
+        return this.easeTo(color, QUADRATIC, 1, MapEase.EASE_IN_OUT);
+    }
+
+    public boolean easeTo(Color color, float time) {
+        return this.easeTo(color, QUADRATIC, time, MapEase.EASE_IN_OUT);
+    }
+
+
     public java.awt.Color toJavaRGB() {
         return java.awt.Color.getHSBColor(hue.getValue() / 255, saturation.getValue() / 255, brightness.getValue() / 255);
     }
@@ -136,6 +159,10 @@ public class Color {
     @Override
     public int hashCode() {
         return Objects.hash(getHue(), getSaturation(), getBrightness(), getAlpha());
+    }
+
+    public boolean getInterpolationStatus() {
+        return this.interpStatus;
     }
 }
 

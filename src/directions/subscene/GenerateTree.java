@@ -19,16 +19,17 @@ public class GenerateTree extends Scene {
     RTree ronald;
     List<RPath> paths = new LinkedList<>();
     List<PShape> acceptedPaths = new LinkedList<>();
+    Color col = new Color(ColorType.RED);
 
     public GenerateTree(Applet window) {
         super(window);
         ronald = new RTree(window,3);
         ronald.init();
         //ronald.setColor(new Color(ColorType.CYAN));
-        RPath path = new RPath(window,ronald.getRoot(), 0,0,1);
-        path.setColor(new Color(ColorType.RED));
+        RPath path = ronald.createPath(0,0,0);
+        col.setAlpha(150);
+        path.setColor(col);
         paths.add(path);
-
     }
 
     @Override
@@ -38,22 +39,24 @@ public class GenerateTree extends Scene {
         PShape ailun = ronald.getShape();
         ailun.scale(1.3f);
         ailun.translate(0,100);
-        ailun.rotate(PApplet.sin(window.frameCount/40f)/10);
         window.shape(ailun);
         if (step[0]) {
+            col.easeTo(new Color(ColorType.CYAN),6f);
             if (step[1])
             {
-                paths.get(0).draw(2);
+                step[2] = paths.get(0).draw(4); // hmmm this is odd
                 PShape shape = paths.get(0).getShape();
                 shape.scale(1.3f);
                 shape.translate(0,100);
-                shape.rotate(PApplet.sin(window.frameCount/40f)/10);
                 window.shape(shape);
                 shape.resetMatrix();
             }
-            else
-                step[1] = highlightPaths();
+            else {
+                step[1] = highlightPaths() && wait(2f);
+            }
         }
+        if (step[2])
+            window.println("eijdsa");
 
         drawPaths();
         ailun.resetMatrix();
@@ -66,7 +69,6 @@ public class GenerateTree extends Scene {
             PShape shape = path.getShape();
             shape.scale(1.3f);
             shape.translate(0,100);
-            shape.rotate(PApplet.sin(window.frameCount/40f)/10);
             acceptedPaths.add(shape);
             if (!b)
                 return false;

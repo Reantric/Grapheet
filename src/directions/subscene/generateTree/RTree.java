@@ -29,6 +29,7 @@ public class RTree {
     int[] directions;
     int depthCount = 0;
     int oldDepth = 0;
+    long frames = 50;
 
     public RTree(Applet p,int degree){
         this.p = p;
@@ -98,8 +99,8 @@ public class RTree {
     }
 
     public boolean draw(){
-        if (depthCount < 2*degree && incrementor.get(depthCount) >= 50) {
-            depthCount++;
+        if (depthCount < 2*degree && incrementor.get(depthCount) >= frames) {
+            depthCount+=2;
             completedDraw = false;
         }
         return draw(depthCount);
@@ -109,15 +110,15 @@ public class RTree {
         long inc = incrementor.get(i);
         float c = 0;
         if (i <= xDepth) {
-            if (inc < 50) {
-                c = (float) Mapper.map2(inc, 0, 50, 0, 1, QUADRATIC, EASE_IN);
+            if (inc < frames) {
+                c = (float) Mapper.map2(inc, 0, frames, 0, 1, QUADRATIC, EASE_IN);
                 incrementor.set(i, inc + 1);
             }
             else
                 c = 1;
         }
         else if (inc > 0) {
-            c = (float) Mapper.map2(inc, 0, 50, 0, 1, QUADRATIC, EASE_IN);
+            c = (float) Mapper.map2(inc, 0, frames, 0, 1, QUADRATIC, EASE_IN);
             completedDraw = false;
             incrementor.set(i, inc - 1);
         }
@@ -125,65 +126,38 @@ public class RTree {
     }
 
     public boolean draw(int xDepth){
-        if (completedDraw && oldDepth == 2*xDepth)
+        if (completedDraw && oldDepth == xDepth && color.getInterpolationStatus()) //TODO: make new method that encapsulates all this!
             return true;
-
-        p.println(incrementor,2*xDepth,2*degree);
         skeleton = p.createShape(GROUP);
-        p.stroke(color);
-        for (int i = 0; i <= 2*degree; i++){
-            float c = assignInterpVal(i,xDepth);
-            RTreeNode n = nodesPerDepth.get((i+1)/2).get(0); // i % 2 == 1 means line!
-            n.setColor(color);
-            if (i % 2 == 1) {
-                Vector parentPos = n.getParent().getPos();
-                PShape lines;
-                float angle = PApplet.radians(36);
-                float x = parentPos.x + RTreeNode.radius*PApplet.sin(angle)*(2*n.getChildNumber()-1);
-                float y = parentPos.y + RTreeNode.radius*PApplet.cos(angle);
+        return this.drawHelper(xDepth);
+    }
 
-                lines = p.createShape(LINE, x, y, c * n.pos.x + (1 - c) * x, c * (n.pos.y - RTreeNode.radius) + (1 - c) * y);
-                n.getParent().getNodeShape().addChild(lines);
-            }
-            else
-                n.draw(c, skeleton);
-        }
-        if ((2*xDepth == 2*degree && incrementor.get(2*xDepth) >= 50) || (2*xDepth < 2*degree && incrementor.get(2*xDepth+1) >= 50)) {
+    public boolean drawHelper(int xDepth){
+        if ((xDepth == 2*degree && incrementor.get(xDepth) >= frames) || (xDepth < 2*degree && incrementor.get(xDepth+1) >= frames)) { // TODO: fix this check since step2 is not registering, completedDraw should be true
             completedDraw = true;
             oldDepth = xDepth;
         }
-        return false;
-    }
-    /*
-    skeleton = p.createShape(GROUP);
         p.stroke(color);
-        for (int i = 0; i <= depth; i++){
-            List<RTreeNode> children = nodesPerDepth.get(i);
-            long inc = incrementor.get(i);
-            float c = 1;
-            if (inc < 50) {
-                c = (float) Mapper.map2(inc,0,50,0,1,QUADRATIC,EASE_IN);
-                incrementor.set(i,inc+1);
-            } else if (i == depth) // depth for any subtree
-                completedDraw = true;
-
-            for (RTreeNode n : children) {
+        for (int i = 0; i <= 2*degree; i++){
+            float c = assignInterpVal(i,xDepth);
+            for (RTreeNode n: nodesPerDepth.get((i+1)/2)) {
                 n.setColor(color);
-                if (i > 0) {
+                if (i % 2 == 1) {
                     Vector parentPos = n.getParent().getPos();
                     PShape lines;
                     float angle = PApplet.radians(36);
-                    float x = parentPos.x + RTreeNode.radius*PApplet.sin(angle)*(2*n.getChildNumber()-1);
-                    float y = parentPos.y + RTreeNode.radius*PApplet.cos(angle);
+                    float x = parentPos.x + RTreeNode.radius * PApplet.sin(angle) * (2 * n.getChildNumber() - 1);
+                    float y = parentPos.y + RTreeNode.radius * PApplet.cos(angle);
 
                     lines = p.createShape(LINE, x, y, c * n.pos.x + (1 - c) * x, c * (n.pos.y - RTreeNode.radius) + (1 - c) * y);
                     n.getParent().getNodeShape().addChild(lines);
-                }
-                n.draw(c, skeleton);
+                } else
+                    n.draw(c, skeleton);
             }
         }
-        TODO: use this to fix the above code!
-     */
+        return completedDraw;
+    }
+
     public int getDegree() {
         return this.degree;
     }
@@ -194,5 +168,9 @@ public class RTree {
 
     public RTreeNode getRoot(){
         return this.root;
+    }
+
+    public RPath createPath(int... directions){
+        return new RPath(this.p,this.root,directions);
     }
 }
