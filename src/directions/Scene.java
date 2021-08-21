@@ -36,7 +36,7 @@ public abstract class Scene {
     }
 
     protected boolean wait(float time){
-        if (window.frameCount > clock[clockInd] + time*60)
+        if (window.frameCount > clock[clockInd] + time*60 && clock[clockInd] != 0)
             return true;
         if (clock[clockInd] == 0)
             clock[clockInd] = window.frameCount;
