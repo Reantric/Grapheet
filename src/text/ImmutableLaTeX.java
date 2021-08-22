@@ -47,7 +47,7 @@ public class ImmutableLaTeX {
         latex.translate(x,y);
     }
 
-    public static String encode(String s){
+    public static String encode(String s){ // TODO: possibly use Huffman coding? LOL
         String b = s.replaceAll("\\s","");
        // System.out.println(b);
         StringBuilder id = new StringBuilder();

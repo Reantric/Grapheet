@@ -133,10 +133,11 @@ public class RTree {
     }
 
     public boolean drawHelper(int xDepth){
-        if ((xDepth == 2*degree && incrementor.get(xDepth) >= frames) || (xDepth < 2*degree && incrementor.get(xDepth+1) >= frames)) { // TODO: fix this check since step2 is not registering, completedDraw should be true
+        if (incrementor.get(xDepth) >= frames) {
             completedDraw = true;
             oldDepth = xDepth;
         }
+
         p.stroke(color);
         for (int i = 0; i <= 2*degree; i++){
             float c = assignInterpVal(i,xDepth);

@@ -4,10 +4,12 @@ import core.Applet;
 import processing.core.PApplet;
 import processing.core.PShape;
 import storage.Vector;
+import text.ImmutableLaTeX;
 import util.Mapper;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 
 import static processing.core.PConstants.GROUP;
@@ -31,6 +33,7 @@ public class RPath extends RTree {
                 root = root.getChildren(i);
             RTreeNode parent = nodesPerDepth.get(nodesPerDepth.size()-1).get(0);
             RTreeNode child = new RTreeNode(parent,root.val);
+
             child.setPos(root.getPos());
             child.setChildNumber(root.getChildNumber());
             nodesPerDepth.add(Collections.singletonList(child));
@@ -49,14 +52,32 @@ public class RPath extends RTree {
         return draw(depthCount);
     }
 
-    @Override
-    public boolean draw(int xDepth){
-        p.println(completedDraw,oldDepth,xDepth);
-        if (completedDraw && oldDepth == xDepth && color.getInterpolationStatus())
-            return true;
-        skeleton = p.createShape(GROUP);
-        skeleton.setName("noLatex");
-        return this.drawHelper(xDepth);
+    public void removeNode(int depth){
+        RTreeNode removal = this.nodesPerDepth.get(depth).get(0);
+        removal.getParent().children.clear();
+        removal.getParent().addChildren(removal.getChildren(0));
+        this.nodesPerDepth.remove(depth);
+        this.incrementor.remove(depth);
+        this.degree--;
+        this.oldDepth--;
+        this.depthCount--;
+    }
+
+    public void addNode(RTreeNode node){
+        RTreeNode parent = this.nodesPerDepth.get(nodesPerDepth.size()-1).get(0);
+        this.nodesPerDepth.add(Collections.singletonList(node));
+        parent.addChildren(node); // if the node already has a parent, what happens? TODO: maybe add some feature that allows chaining of nodes
+        this.degree++;
+        System.out.println(incrementor);
+        this.incrementor.add(0L);
+        this.incrementor.add(0L);
+        node.latex = new ImmutableLaTeX(p,"th"); // me amo ape
+        node.setPos(new Vector(parent.pos.x,parent.pos.y+200));
+      //  completedDraw = false;
+    }
+
+    public RTreeNode getNode(int depth){
+        return this.nodesPerDepth.get(depth).get(0);
     }
 
     public int getDepthCount(){
