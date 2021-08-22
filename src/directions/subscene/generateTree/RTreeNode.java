@@ -27,9 +27,7 @@ public class RTreeNode {
     Color color = new Color(ColorType.WHITE);
 
     public RTreeNode(RTreeNode parent, int val){
-        this.parent = parent;
         parent.addChildren(this);
-        childNumber = parent.getChildren().size()-1;
         this.val = val;
         latex = new ImmutableLaTeX(p,Integer.toString(val));
     }
@@ -50,6 +48,8 @@ public class RTreeNode {
 
     public void addChildren(RTreeNode child){
         this.children.add(child);
+        child.setParent(this);
+        child.setChildNumber(children.size()-1);
     }
 
     public void setPos(Vector pos){
@@ -111,5 +111,10 @@ public class RTreeNode {
 
     public void setChildNumber(int childNumber) {
         this.childNumber = childNumber;
+    }
+
+    public void setParent(RTreeNode parent) {
+        // Only to be used if this.parent is null beforehand!
+        this.parent = parent;
     }
 }
