@@ -1,21 +1,11 @@
 package directions.subscene.generateTree;
 
 import core.Applet;
-import processing.core.PApplet;
-import processing.core.PShape;
 import storage.Vector;
 import text.ImmutableLaTeX;
-import util.Mapper;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedList;
-import java.util.List;
-
-import static processing.core.PConstants.GROUP;
-import static processing.core.PConstants.LINE;
-import static util.map.MapEase.EASE_IN;
-import static util.map.MapType.QUADRATIC;
 
 public class RPath extends RTree {
     public RPath(Applet p, RTreeNode root, int... directions){
@@ -53,14 +43,17 @@ public class RPath extends RTree {
     }
 
     public void removeNode(int depth){
+        p.println(incrementor);
         RTreeNode removal = this.nodesPerDepth.get(depth).get(0);
         removal.getParent().children.clear();
-        removal.getParent().addChildren(removal.getChildren(0));
+
+        if (removal.hasChildren()) // If this is not a leaf, add nodeToBeDeleted's children to parent!
+            removal.getParent().addChildren(removal.getChildren(0));
         this.nodesPerDepth.remove(depth);
         this.incrementor.remove(depth);
         this.degree--;
-        this.oldDepth--;
-        this.depthCount--;
+        this.oldDepth-=2;
+        this.depthCount-=2;
     }
 
     public void addNode(RTreeNode node){

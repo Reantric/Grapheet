@@ -11,16 +11,16 @@ public class Color {
     boolean interpStatus = true;
 
     public Color(float hue) {
-        this(hue, 255, 255, 255);
+        this(hue, 100, 100, 100);
     }
 
     public Color(float hue, float saturation) {
-        this(hue, saturation, 255, 255);
+        this(hue, saturation, 100, 100);
 
     }
 
     public Color(float hue, float saturation, float brightness) {
-        this(hue, saturation, brightness, 255);
+        this(hue, saturation, brightness, 100);
     }
 
     public Color(float hue, float saturation, float brightness, float alpha) {
@@ -35,39 +35,39 @@ public class Color {
             case WHITE -> {
                 hue = new Subcolor(0);
                 saturation = new Subcolor(0);
-                brightness = new Subcolor(255);
+                brightness = new Subcolor(100);
             }
             case RED -> {
-                hue = new Subcolor(255);
-                saturation = new Subcolor(255);
-                brightness = new Subcolor(255);
+                hue = new Subcolor(360);
+                saturation = new Subcolor(100);
+                brightness = new Subcolor(100);
             }
             case CYAN -> {
-                hue = new Subcolor(120);
-                saturation = new Subcolor(255);
-                brightness = new Subcolor(255);
+                hue = new Subcolor(180);
+                saturation = new Subcolor(100);
+                brightness = new Subcolor(100);
             }
             case BLACK -> {
-                hue = new Subcolor(255);
+                hue = new Subcolor(0);
                 saturation = new Subcolor(0);
                 brightness = new Subcolor(0);
             }
             case GREEN -> {
-                hue = new Subcolor(107);
-                saturation = new Subcolor(255);
-                brightness = new Subcolor(255);
+                hue = new Subcolor(150);
+                saturation = new Subcolor(100);
+                brightness = new Subcolor(100);
             }
             case MAGENTA -> {
-                hue = new Subcolor(210);
-                saturation = new Subcolor(255);
-                brightness = new Subcolor(255);
+                hue = new Subcolor(300);
+                saturation = new Subcolor(100);
+                brightness = new Subcolor(100);
             }
         }
-        alpha = new Subcolor(255);
+        alpha = new Subcolor(100);
     }
 
     public Color() {
-        this(0, 255, 255, 255);
+        this(0, 100, 100, 100);
     }
 
     public Color(Subcolor hue, Subcolor saturation, Subcolor brightness, Subcolor alpha) {
@@ -134,7 +134,7 @@ public class Color {
 
 
     public java.awt.Color toJavaRGB() {
-        return java.awt.Color.getHSBColor(hue.getValue() / 255, saturation.getValue() / 255, brightness.getValue() / 255);
+        return java.awt.Color.getHSBColor(hue.getValue() / 360, saturation.getValue() / 100, brightness.getValue() / 100);
     }
 
     public String toString() {
@@ -142,14 +142,13 @@ public class Color {
     }
 
     public Color invert() {
-        return new Color(Math.abs((180 - hue.getValue()) % 255), saturation.getValue(), brightness.getValue(), alpha.getValue());
+        return new Color(Math.abs((180 - hue.getValue()) % 360), saturation.getValue(), brightness.getValue(), alpha.getValue());
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof Color)) return false;
-        Color color = (Color) o;
+        if (!(o instanceof Color color)) return false;
         return getHue().equals(color.getHue()) &&
                 getSaturation().equals(color.getSaturation()) &&
                 getBrightness().equals(color.getBrightness()) &&

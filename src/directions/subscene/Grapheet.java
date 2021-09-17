@@ -2,33 +2,32 @@ package directions.subscene;
 
 import core.Applet;
 import directions.Scene;
-import geom.Grid;
+import geom.DataGrid;
 import storage.Color;
 import storage.ColorType;
-import storage.Graph;
+import storage.dataviz.Graph;
 import storage.Vector;
 
 import java.util.Arrays;
 
 public class Grapheet extends Scene {
-    public Grid plane;
+    public DataGrid plane;
     public Graph[] graphs;
     public Color[] colorWheel;
 
     public Grapheet(Applet window) {
         super(window);
         runScene = false;
-       // init();
+        init();
     }
 
-    public void init(){
-        plane = new Grid(window);
+    private void init(){
+        plane = new DataGrid(window);
         String[] strings = window.loadStrings("src\\data\\datas.csv");
         ColorType[] colorTypes = ColorType.values();
         colorWheel = new Color[colorTypes.length];
         for (int u = 0; u < colorTypes.length; u++)
             colorWheel[u] = new Color(colorTypes[u]);
-
         System.out.println(Arrays.toString(colorTypes));
         String[] header = strings[0].split(",");
         int dataLen = strings.length-1;
@@ -55,9 +54,10 @@ public class Grapheet extends Scene {
     @Override
     public boolean executeHelper() {
         step[0] = plane.draw();
-        if (step[0])
-            plane.getCamera().easeTo(new Vector(200,-200),6);
-        //    step[1] = this.graph();
+        if (step[0]) {
+            plane.getCamera().easeTo(new Vector(200, -200), 6);
+            step[1] = this.graph();
+        }
 
         plane.drawMainAxes();
         plane.label();
