@@ -30,10 +30,6 @@ public class Subcolor { // TODO: define some Easable interface
         return value;
     }
 
-    public boolean is255() {
-        return Math.abs(255 - value) < EPSILON;
-    }
-
     public void setValue(float newValue) {
         this.value = newValue;
     }

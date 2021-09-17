@@ -1,9 +1,12 @@
-package storage;
+package storage.dataviz;
 
 import core.Applet;
-import geom.Grid;
+import geom.DataGrid;
 import processing.core.PShape;
-import processing.core.PVector;
+import storage.Color;
+import storage.ColorType;
+import storage.TruthVector;
+import storage.Vector;
 import util.Mapper;
 import util.map.MapEase;
 import util.map.MapType;
@@ -11,11 +14,8 @@ import util.map.MapType;
 import java.util.Arrays;
 import java.util.function.Function;
 import java.util.stream.DoubleStream;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
-import static geom.Grid.HEIGHT;
-import static geom.Grid.WIDTH;
+import static geom.DataGrid.WIDTH;
 import static processing.core.PConstants.HSB;
 import static processing.core.PConstants.LINES;
 
@@ -24,15 +24,15 @@ public class Graph {
     public double[] pointValues;
     public Color color;
     public String name;
-    public Grid grid;
+    public DataGrid dataGrid;
     public Function<Double,Double> function;
     private static double distance = 0.004; // dont want to make final, distance between x
     public static double incrementor = 0;
     public static double index = 0;
     public boolean nonNegative = true;
 
-    public Graph(Grid grid, double[] pv, Color color, String name){
-        this.grid = grid;
+    public Graph(DataGrid dataGrid, double[] pv, Color color, String name){
+        this.dataGrid = dataGrid;
         this.pointValues = pv;
         this.color = color;
         this.name = name;
@@ -42,16 +42,16 @@ public class Graph {
         System.out.println(distance);
     }
 
-    public Graph(Grid grid, Function<Double, Double> function, Color color){
-        this.grid = grid;
+    public Graph(DataGrid dataGrid, Function<Double, Double> function, Color color){
+        this.dataGrid = dataGrid;
         this.color = color;
         this.function = function;
         initializeValues();
         System.out.println(xValues.length);
     }
 
-    public Graph(Grid grid, double[] pv, Color color){
-        this(grid,pv,color,"");
+    public Graph(DataGrid dataGrid, double[] pv, Color color){
+        this(dataGrid,pv,color,"");
     }
 
     public static void setXValues(double[] xVals) {
@@ -77,9 +77,9 @@ public class Graph {
     }
 
     private PShape createGraphShape(){
-        Applet p = grid.getProcessingInstance();
-        Vector incrementor = grid.getIncrementor();
-        Vector scale = grid.getScale();
+        Applet p = dataGrid.getProcessingInstance();
+        Vector incrementor = dataGrid.getIncrementor();
+        Vector scale = dataGrid.getScale();
         PShape shape = p.createShape();
         shape.colorMode(HSB);
         shape.beginShape(LINES);
@@ -90,7 +90,7 @@ public class Graph {
 
        // p.line(grid.getDisplacement().x,1000,grid.getDisplacement().x,-1000); Midliner
 
-        double index = (620+grid.getDisplacement().x) * 1/scale.x * 1/distance;
+        double index = (620+ dataGrid.getDisplacement().x) * 1/scale.x * 1/distance;
         System.out.println(index);
         for (int i = 1; i < index; i++){
             shape.vertex(165-WIDTH/2f + scale.x * (float) xValues[i-1],400-scale.y * (float) pointValues[i-1]);
@@ -104,11 +104,11 @@ public class Graph {
      * To be used with P2D and P2D only (not sure about the benefits really besides that)
      */
     private void drawLineShape(){
-        Applet p = grid.getProcessingInstance();
+        Applet p = dataGrid.getProcessingInstance();
         p.strokeWeight(5.5f);
         p.stroke(color);
-        Vector scale = grid.getScale();
-        TruthVector moving = grid.getMoving();
+        Vector scale = dataGrid.getScale();
+        TruthVector moving = dataGrid.getMoving();
         if (incrementor < xValues.length) // start moving once this is no longer true?
             index = Mapper.map2(incrementor,0,xValues.length,0,xValues.length, MapType.QUADRATIC, MapEase.EASE_IN_OUT);
         else

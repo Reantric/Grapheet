@@ -18,16 +18,16 @@ public abstract class Scene {
     public abstract boolean executeHelper();
 
     public boolean execute(){
-        init();
+        intro();
         boolean b = executeHelper();
-        endit();
+        outro();
         return b;
     }
 
-    protected void init(){
+    protected void intro(){
     }
 
-    protected void endit(){ // when overriding, call super!
+    protected void outro(){ // when overriding, call super!
         clockInd = 0;
     }
 

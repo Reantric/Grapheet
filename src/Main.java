@@ -1,14 +1,13 @@
 import com.hamoid.VideoExport;
 import core.Applet;
 import directions.Directions;
-import geom.Grid;
 import processing.core.PApplet;
 import processing.core.PFont;
 import processing.event.MouseEvent;
 
 import java.lang.reflect.InvocationTargetException;
 
-import static geom.Grid.*;
+import static geom.DataGrid.*;
 
 public class Main extends Applet {
     public static PFont myFont, italics;
@@ -28,14 +27,14 @@ public class Main extends Applet {
         videoExport.setFfmpegPath("library\\ffmpeg.exe");
         videoExport.setQuality(85,0);
         videoExport.setFrameRate(60);
-        frameRate(60);
+        frameRate(60); // P2D freakishly slow
         //videoExport.startMovie();
     }
 
 
     public void settings() {
         //size(WIDTH, HEIGHT, P2D);
-        fullScreen(P2D);
+        fullScreen();
         smooth(8);
     }
 
@@ -51,6 +50,7 @@ public class Main extends Applet {
 
     public void draw(){
         //beginRecord(SVG, "frame-####.svg");
+        scale(e);
         init();
         if (Directions.directions()){ // if all scenes finishes, terminate!
             System.out.println("Goodbye");
@@ -63,7 +63,7 @@ public class Main extends Applet {
     }
 
     private void init(){
-        colorMode(HSB);
+        colorMode(HSB, 360, 100, 100,100);
         translate(WIDTH/2f,HEIGHT/2f);
         background(0);
         shapeMode(CENTER);

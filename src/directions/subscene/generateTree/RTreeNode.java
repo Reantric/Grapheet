@@ -117,4 +117,8 @@ public class RTreeNode {
         // Only to be used if this.parent is null beforehand!
         this.parent = parent;
     }
+
+    public boolean hasChildren() {
+        return children.size() > 0;
+    }
 }
