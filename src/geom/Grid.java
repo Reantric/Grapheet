@@ -22,7 +22,7 @@ import static util.Useful.floorAny;
 public class Grid {
     Applet p;
     Color color;
-    Vector incrementor = new Vector(200,200), startingIncrementor = new Vector(incrementor);
+    Vector incrementor = new Vector(200,200), startingIncrementor = new Vector(incrementor), baseIncrementor = new Vector(incrementor);
     Vector camera = new Vector(0,0), startingCamera = new Vector(0,0);
     Vector spacing = new Vector(0,0);
     Vector begin = new Vector(), end = new Vector();
@@ -49,6 +49,8 @@ public class Grid {
 
     private void update(){
         displacement = PVector.sub(camera,startingCamera);
+        scale = new Vector(startingIncrementor.x * incrementor.x/baseIncrementor.x,startingIncrementor.y * incrementor.y/baseIncrementor.y); // wtf
+        // once fadingLines occur, update baseIncrementor using rules from 2DGP
     }
 
     public void setScale(Vector scale){
@@ -64,11 +66,11 @@ public class Grid {
         begin.x = (float) ceilAny(displacement.x - WIDTH/2f,incrementor.x);
         end.x = (float) ceilAny(camera.x + WIDTH/2f,incrementor.x);
 
-        float ender = (end.x-begin.x)/incrementor.x;
+        float ender = Math.round((end.x-begin.x)/incrementor.x);
         for (int i = 0; i < ender; i++){ // draws vert lines
             float x = begin.x + i*incrementor.x;
            // p.println(x-startingBegin.x, 2*incrementor.x);
-            if (Math.abs(Math.IEEEremainder(x-startingBegin.x, 2*incrementor.x)) < EPSILON) // v-startingBegin.v is meant for translation, not scaling! TODO: fix
+            if ((ender-1)/2 % 2  == (i % 2))
                 p.strokeWeight(largeStroke);
             else
                 p.strokeWeight(smallStroke);
@@ -76,13 +78,13 @@ public class Grid {
             p.line(x,camera.y+spacing.y,x,camera.y-spacing.y);
         }
 
-        begin.y = (int) floorAny(HEIGHT/2f + camera.y, incrementor.y);
-        end.y = (int) floorAny(-HEIGHT/2f + camera.y, incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
+        begin.y = (float) floorAny(HEIGHT/2f + camera.y, incrementor.y);
+        end.y = (float) floorAny(-HEIGHT/2f + camera.y, incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
 
-        ender = (begin.y-end.y)/incrementor.y;
+        ender = Math.round((begin.y-end.y)/incrementor.y);
         for (int j = 0; j < ender; j++){  // draws horiz lines, processing draws y up to down cuz flipped (so invert the bounds)
             float y = begin.y - j*incrementor.y;
-            if (Math.abs(Math.IEEEremainder(y-startingBegin.y, 2*incrementor.y)) < EPSILON)
+            if ((ender-1)/2 % 2  == (j % 2))
                 p.strokeWeight(largeStroke);
             else
                 p.strokeWeight(smallStroke);
@@ -99,37 +101,47 @@ public class Grid {
         p.line(startingCamera.x,startingCamera.y-spacing.y,startingCamera.x,startingCamera.y+spacing.y);
     }
 
+    static Color darkGrey = new Color(0,0,0,60);
     public void label(){
-        // y value rectangle
         p.textSize(50);
         p.textAlign(RIGHT,CENTER);
         p.fill(ColorType.WHITE);
-        float ender = (begin.y-end.y)/incrementor.y; // remember y's flipped!
+        float ender = Math.round((begin.y-end.y)/incrementor.y); // remember y's flipped!
         for (int j = 0; j < ender; j++){
             float y = begin.y - j*incrementor.y;
-            if (Math.abs(Math.IEEEremainder(y-startingBegin.y, 2*incrementor.y)) < EPSILON) {
+            if ((ender-1)/2 % 2  == (j % 2)) {
                 // -600 is the original begin.y <--- dont trust anything idk
                 float txt = textify(y,Y);
+               // p.println(txt);
                 float yCoord;
                 yCoord = y - 40;
 
-                p.text(df.format(Math.abs(txt)), displacement.x - 6, yCoord); // account for everything !
+                p.text(df.format(txt), displacement.x - 6, yCoord); // account for everything !
 
             }
         }
 
         p.textAlign(CENTER,CENTER);
+        p.noStroke();
         // increment end because text needs to show up before line (super efficient line)
-        ender = (end.x-begin.x)/incrementor.x;
+        ender = Math.round((end.x-begin.x)/incrementor.x);
         for (int i = 0; i < ender; i++){
             float x = begin.x + i*incrementor.x;
             float txt = textify(x,X);
+            // p.println(txt);
             if (txt == 0)
                 continue;
 
-            if (Math.abs(Math.IEEEremainder(x-startingBegin.x, 2*incrementor.x)) < EPSILON)
-                // -600 is the original begin.x
-                p.text(df.format(txt),x,displacement.y+30); // account for everything !
+            p.println(p.frameCount,ender,i); // why the hell is ender 10 at frame 61?, shouldnt it be odd no matter what?, also check 241 for y
+            if ((ender-1)/2 % 2 == (i % 2)) {
+                 // -600 is the original begin.x
+                 String formattedNumber = df.format(txt);
+                 float tWidth = p.textWidth(formattedNumber);
+                 p.fill(darkGrey);
+                 p.rect(x - tWidth / 2, displacement.y + 10, x + tWidth / 2, displacement.y + 64);
+                 p.fill(ColorType.WHITE);
+                 p.text(formattedNumber, x, displacement.y + 30); // account for everything !
+            }
         }
     }
 
