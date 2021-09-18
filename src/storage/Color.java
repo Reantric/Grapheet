@@ -62,6 +62,11 @@ public class Color {
                 saturation = new Subcolor(100);
                 brightness = new Subcolor(100);
             }
+            case ORANGE -> {
+                hue = new Subcolor(40);
+                saturation = new Subcolor(100);
+                brightness = new Subcolor(100);
+            }
         }
         alpha = new Subcolor(100);
     }

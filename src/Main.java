@@ -23,18 +23,18 @@ public class Main extends Applet {
             noSuchMethodException.printStackTrace();
         }
 
-        videoExport = new VideoExport(this,"test.mp4");
+        videoExport = new VideoExport(this,"taylors.mp4");
         videoExport.setFfmpegPath("library\\ffmpeg.exe");
         videoExport.setQuality(85,0);
         videoExport.setFrameRate(60);
-        frameRate(60); // P2D freakishly slow
-        //videoExport.startMovie();
+        frameRate(60);
+        videoExport.startMovie();
     }
 
 
     public void settings() {
         //size(WIDTH, HEIGHT, P2D);
-        fullScreen();
+        fullScreen(P2D);// P2D freakishly slow
         smooth(8);
     }
 

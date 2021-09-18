@@ -5,14 +5,14 @@ import directions.Scene;
 import geom.DataGrid;
 import storage.Color;
 import storage.ColorType;
-import storage.dataviz.Graph;
+import storage.dataviz.DataGraph;
 import storage.Vector;
 
 import java.util.Arrays;
 
 public class Grapheet extends Scene {
     public DataGrid plane;
-    public Graph[] graphs;
+    public DataGraph[] dataGraphs;
     public Color[] colorWheel;
 
     public Grapheet(Applet window) {
@@ -32,7 +32,7 @@ public class Grapheet extends Scene {
         String[] header = strings[0].split(",");
         int dataLen = strings.length-1;
         int yValLen = header.length-1;
-        graphs = new Graph[yValLen];
+        dataGraphs = new DataGraph[yValLen];
         double[] xValues = new double[dataLen];
         double[][] yValues = new double[yValLen][dataLen];
         for (int c = 1; c <= dataLen; c++){
@@ -43,9 +43,9 @@ public class Grapheet extends Scene {
             }
         }
 
-        Graph.setXValues(xValues);
+        DataGraph.setXValues(xValues);
         for (int i = 0; i < yValLen; i++){
-            graphs[i] = new Graph(plane,yValues[i], colorWheel[i % colorWheel.length],"John");
+            dataGraphs[i] = new DataGraph(plane,yValues[i], colorWheel[i % colorWheel.length],"John");
         }
         //System.out.println(Arrays.deepToString(yValues));
     }
@@ -66,10 +66,10 @@ public class Grapheet extends Scene {
     }
 
     private boolean graph(){
-        for (Graph g: graphs){
+        for (DataGraph g: dataGraphs){
             g.draw();
         }
-        Graph.update();
-        return Graph.index >= Graph.xValues.length-1;
+        DataGraph.update();
+        return DataGraph.index >= DataGraph.xValues.length-1;
     }
 }
