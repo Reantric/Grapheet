@@ -19,7 +19,7 @@ import static geom.DataGrid.WIDTH;
 import static processing.core.PConstants.HSB;
 import static processing.core.PConstants.LINES;
 
-public class Graph {
+public class DataGraph {
     public static double[] xValues; // Set them here, but Graph methods do not touch this!
     public double[] pointValues;
     public Color color;
@@ -31,7 +31,7 @@ public class Graph {
     public static double index = 0;
     public boolean nonNegative = true;
 
-    public Graph(DataGrid dataGrid, double[] pv, Color color, String name){
+    public DataGraph(DataGrid dataGrid, double[] pv, Color color, String name){
         this.dataGrid = dataGrid;
         this.pointValues = pv;
         this.color = color;
@@ -42,7 +42,7 @@ public class Graph {
         System.out.println(distance);
     }
 
-    public Graph(DataGrid dataGrid, Function<Double, Double> function, Color color){
+    public DataGraph(DataGrid dataGrid, Function<Double, Double> function, Color color){
         this.dataGrid = dataGrid;
         this.color = color;
         this.function = function;
@@ -50,12 +50,12 @@ public class Graph {
         System.out.println(xValues.length);
     }
 
-    public Graph(DataGrid dataGrid, double[] pv, Color color){
+    public DataGraph(DataGrid dataGrid, double[] pv, Color color){
         this(dataGrid,pv,color,"");
     }
 
     public static void setXValues(double[] xVals) {
-        Graph.xValues = xVals;
+        DataGraph.xValues = xVals;
     }
 
     public void draw(){
