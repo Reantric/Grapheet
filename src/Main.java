@@ -58,7 +58,7 @@ public class Main extends Applet {
             exit();
         } else
             videoExport.saveFrame();
-       // saveFrame("test/line-######.png");
+        //saveFrame("test/line-" + frameCount + ".png");
       //  endRecord();
     }
 
