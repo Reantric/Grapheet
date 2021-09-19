@@ -119,7 +119,7 @@ public class Grid {
         p.line(startingCamera.x,startingCamera.y-spacing.y,startingCamera.x,startingCamera.y+spacing.y);
     }
 
-    static Color darkGrey = new Color(0,0,0,60);
+    Color darkGrey = new Color(0,0,0,60);
     public void label(){
         p.textSize(50);
         p.textAlign(RIGHT,CENTER);
@@ -188,6 +188,10 @@ public class Grid {
     }
 
     public Vector canvasToPlane(Vector canvPoint){
-        return new Vector(canvPoint.x * scale.y,canvPoint.y * scale.y);
+        return new Vector(canvPoint.x * scale.x,-canvPoint.y * scale.y);
+    }
+
+    public Vector planeToCanvas(Vector planePoint){
+        return new Vector(planePoint.x / scale.x, -planePoint.y / scale.y);
     }
 }

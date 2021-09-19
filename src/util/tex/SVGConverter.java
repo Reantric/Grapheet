@@ -18,6 +18,7 @@ import org.scilab.forge.jlatexmath.greek.GreekRegistration;
 import org.w3c.dom.DOMImplementation;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 
 import javax.swing.*;
 import java.awt.*;
@@ -57,7 +58,11 @@ public class SVGConverter {
         // icon.paintIcon(jl, g2, 0, 0);
         icon.paintIcon(jl, g2, 0, 0);
         Element root = g2.getRoot();
-        ((Element) root.getChildNodes().item(2)).setAttribute("id", "eq");
+        Element eq = ((Element) root.getChildNodes().item(2));
+        eq.setAttribute("id", "eq");
+        for (int i = 0; i < eq.getChildNodes().getLength(); i++){
+            ((Element) eq.getChildNodes().item(i)).setAttribute("id", String.valueOf(i));
+        }
         try {
             FileOutputStream svgs = new FileOutputStream(file);
             Writer out = new OutputStreamWriter(svgs, StandardCharsets.UTF_8);

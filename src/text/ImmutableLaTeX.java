@@ -17,6 +17,7 @@ public class ImmutableLaTeX {
     Color color;
     SVGConverter converter;
     Applet p;
+    // Possibly add length attribute for number of things in SVG?
     public ImmutableLaTeX(Applet p, String str) {
         this.p = p;
         String id = encode(str);
@@ -27,20 +28,31 @@ public class ImmutableLaTeX {
         }
         this.latex = p.loadShape(".\\temp\\" + id + ".svg").getChild("eq");
         this.latex.disableStyle();
+        color.setAlpha(0);
     }
 
     public PShape getShape(){
         return latex;
     }
 
-    public void draw(Vector pos){
-        this.draw(pos.x,pos.y);
+    public void setColor(Color color){
+        this.color = color;
+        color.setAlpha(0);
     }
 
-    public void draw(float x, float y) {
-        p.fill(color);
+    public boolean draw(Vector pos){
+        return this.draw(pos.x,pos.y);
+    }
+
+    Color darkGrey = new Color(0,0,0,60);
+    public boolean draw(float x, float y) {
+        darkGrey.setAlpha(0.6f * color.getAlpha().getValue());
+        p.fill(darkGrey);
         p.noStroke();
+        p.rect(x-latex.getWidth()/2,y-latex.getHeight()/2 + 5,x+latex.getWidth()/2 + 20,y+latex.getHeight()/2 + 15);
+        p.fill(color);
         p.shape(latex, x, y);
+        return color.getAlpha().easeTo(100);
     }
 
     public void setPos(float x, float y){

@@ -65,8 +65,8 @@ public class Subcolor { // TODO: define some Easable interface
         return this.easeTo(bound, QUADRATIC, 1, MapEase.EASE_IN_OUT);
     }
 
-    public boolean easeTo(float bound, float speed) {
-        return this.easeTo(bound, QUADRATIC, speed, MapEase.EASE_IN_OUT);
+    public boolean easeTo(float bound, float time) {
+        return this.easeTo(bound, QUADRATIC, time, MapEase.EASE_IN_OUT);
     }
 
     public boolean easeTo(float bound, MapEase easing) {
