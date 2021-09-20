@@ -2,12 +2,11 @@ package directions.subscene;
 
 import core.Applet;
 import directions.Scene;
-import geom.DataGrid;
 import geom.Grid;
 import storage.Color;
 import storage.ColorType;
 import storage.Vector;
-import storage.curve.Graph;
+import geom.curve.Graph;
 import text.ImmutableLaTeX;
 
 public class Taylors extends Scene {

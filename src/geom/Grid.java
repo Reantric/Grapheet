@@ -7,10 +7,7 @@ import storage.Color;
 import storage.ColorType;
 import storage.IntVector;
 import storage.Vector;
-import storage.curve.Graph;
-import util.Mapper;
-import util.map.MapEase;
-import util.map.MapType;
+import geom.curve.Graph;
 
 import java.text.DecimalFormat;
 import java.util.function.Function;
@@ -64,6 +61,7 @@ public class Grid {
         end.y = (float) floorAny(-HEIGHT/2f + camera.y, incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
         ender.x = ceilToNearestOdd((end.x-begin.x)/incrementor.x);
         ender.y =  ceilToNearestOdd((begin.y-end.y)/incrementor.y);
+        p.println(p.frameRate, p.frameCount);
     }
 
     public void setScale(Vector scale){
