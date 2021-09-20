@@ -1,4 +1,4 @@
-package storage.curve;
+package geom.curve;
 
 import geom.Grid;
 import storage.Color;
