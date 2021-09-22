@@ -41,6 +41,7 @@ public class Taylors extends Scene {
         if (step[2] && !step[3]){
             taylor = plane.graph(t -> t);
             taylor.setColor(new Color(ColorType.MAGENTA));
+            sinText.tex.forEach(shapeWrapper -> shapeWrapper.setColor(new Color(ColorType.RED)));
             step[3] = true;
         }
 
