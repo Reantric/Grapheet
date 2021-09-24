@@ -25,7 +25,7 @@ public class Graph { // 2D graph, fuck 3D
         this.plane = plane;
         double left = plane.canvasToPlane(new Vector(-WIDTH/2f)).x;
         this.bounds = new Vector((float) left,(float) left+WIDTH*plane.getScale().x);
-        System.out.println(bounds);
+        //System.out.println(bounds);
     }
 
     public Graph(Grid plane, Vector bounds){ // Graph is assumed to be explicitly defined, so bounds refers to xBounds
@@ -45,8 +45,8 @@ public class Graph { // 2D graph, fuck 3D
         }
         xValues[ender] = (float) (recipScaleX * bounds.y);
         yValues[ender] = (float) (recipScaleY * f.apply((double) bounds.y));
-        System.out.println(Arrays.toString(xValues));
-        System.out.println(Arrays.toString(yValues));
+        //System.out.println(Arrays.toString(xValues));
+        //System.out.println(Arrays.toString(yValues));
         this.f = f;
     }
 
