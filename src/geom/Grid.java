@@ -61,7 +61,7 @@ public class Grid {
         end.y = (float) floorAny(-HEIGHT/2f + camera.y, incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
         ender.x = ceilToNearestOdd((end.x-begin.x)/incrementor.x);
         ender.y =  ceilToNearestOdd((begin.y-end.y)/incrementor.y);
-        p.println(p.frameRate, p.frameCount);
+       // p.println(p.frameRate, p.frameCount);
     }
 
     public void setScale(Vector scale){

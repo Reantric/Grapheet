@@ -29,7 +29,7 @@ public class Main extends Applet {
         videoExport.setFrameRate(60);
         frameRate(60);
         //surface.setVisible(false);
-        videoExport.startMovie();
+        //videoExport.startMovie();
     }
 
 

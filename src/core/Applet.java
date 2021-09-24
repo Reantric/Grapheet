@@ -46,6 +46,10 @@ public class Applet extends PApplet {
         this.shape(latex,pos.x,pos.y);
     }
 
+    public void rect(Vector pos, Vector pos1) {
+        this.rect(pos.x,pos.y,pos1.x,pos1.y);
+    }
+
     /*public Shape createShape() {
         try {
             return new Shape(g.createShape());

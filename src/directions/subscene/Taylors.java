@@ -23,6 +23,7 @@ public class Taylors extends Scene {
         sinText.setColor(new Color(ColorType.GREEN));
         taylorText = new ImmutableLaTeX(window,"y = x - \\frac{x^3}{3!} + \\frac{x^5}{5!}");
         taylorText.setColor(new Color(ColorType.MAGENTA));
+        //new ImmutableLaTeX(window,"y = \\frac{\\frac{x}{3}}{2}");
     }
 
     @Override
