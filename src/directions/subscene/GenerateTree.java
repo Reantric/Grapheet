@@ -47,7 +47,7 @@ public class GenerateTree extends Scene {
 
 
         if (step[0]) {
-            col.easeTo(new Color(ColorType.CYAN),6f);
+            col.interpolate(new Color(ColorType.CYAN),6f);
             step[1] = highlightPath();
         }
 

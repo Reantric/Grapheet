@@ -33,7 +33,7 @@ public class Graph { // 2D graph, fuck 3D
         this.bounds = bounds;
     }
 
-    public void setValues(Function<Double,Double> f){
+    public void setValues(Function<Double,Double> f){ // TODO: add bounds check for NaN numbers
         int ender = (int) Math.floor((bounds.y-bounds.x)/distance - EPSILON);
         xValues = new float[ender+1];
         yValues = new float[ender+1];
@@ -46,7 +46,7 @@ public class Graph { // 2D graph, fuck 3D
         xValues[ender] = (float) (recipScaleX * bounds.y);
         yValues[ender] = (float) (recipScaleY * f.apply((double) bounds.y));
         //System.out.println(Arrays.toString(xValues));
-        //System.out.println(Arrays.toString(yValues));
+        System.out.println(Arrays.toString(yValues));
         this.f = f;
     }
 
@@ -58,6 +58,8 @@ public class Graph { // 2D graph, fuck 3D
         plane.p.stroke(color);
         plane.p.strokeWeight(5);
         for (int i = 0; i < index.x; i++){
+            if (yValues[i] > 1.33*plane.getBegin().y || yValues[i] < 1.33*plane.getEnd().y)
+                continue;
             plane.p.line(xValues[i],yValues[i],xValues[i+1],yValues[i+1]);
         }
         return index.easeTo(new Vector(xValues.length-1),time);
@@ -67,7 +69,6 @@ public class Graph { // 2D graph, fuck 3D
     public boolean interpolate(Function<Double,Double> g){ //add interpolate(Graph g) later!
         g = g.andThen(t -> -t);
         if (f.equals(g)){
-            incrementor.x = 0;
             return true;
         }
         float recipScaleY = 1/plane.getScale().y;
@@ -77,6 +78,7 @@ public class Graph { // 2D graph, fuck 3D
         }
         if (incrementor.easeTo(1)) {
             this.f = g;
+            incrementor = new Vector(0);
             return true;
         }
         return false;
