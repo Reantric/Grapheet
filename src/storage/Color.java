@@ -121,7 +121,7 @@ public class Color {
         alpha.setValue(newAlpha);
     }
 
-    public boolean easeTo(Color color, MapType interpType, float time, MapEase easing) {
+    public boolean interpolate(Color color, MapType interpType, float time, MapEase easing) {
         interpStatus = this.getHue().easeTo(color.getHue().getValue(), interpType, time, easing) &
                 this.getSaturation().easeTo(color.getSaturation().getValue(), interpType,time , easing) &
                 this.getBrightness().easeTo(color.getBrightness().getValue(), interpType, time, easing) &
@@ -129,12 +129,12 @@ public class Color {
         return interpStatus;
     }
 
-    public boolean easeTo(Color color) {
-        return this.easeTo(color, QUADRATIC, 1, MapEase.EASE_IN_OUT);
+    public boolean interpolate(Color color) {
+        return this.interpolate(color, QUADRATIC, 1, MapEase.EASE_IN_OUT);
     }
 
-    public boolean easeTo(Color color, float time) {
-        return this.easeTo(color, QUADRATIC, time, MapEase.EASE_IN_OUT);
+    public boolean interpolate(Color color, float time) {
+        return this.interpolate(color, QUADRATIC, time, MapEase.EASE_IN_OUT);
     }
 
 

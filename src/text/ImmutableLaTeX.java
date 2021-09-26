@@ -5,6 +5,7 @@ import core.ShapeWrapper;
 import processing.core.PApplet;
 import processing.core.PShape;
 import processing.data.XML;
+import storage.BoundingBox;
 import storage.Color;
 import storage.ColorType;
 import storage.Vector;
@@ -24,13 +25,17 @@ public class ImmutableLaTeX {
     Applet p;
     Vector dim;
     public List<ShapeWrapper> tex;
+    BoundingBox bbox = new BoundingBox();
     public ImmutableLaTeX(Applet p, String str) {
         this.p = p;
         String id = encode(str);
         this.color = new Color(ColorType.CYAN);
+
+        boolean debug = false;
         if (!new File(".\\temp\\" + id + ".svg").exists()) {
             converter = new SVGConverter(color); // TODO: Modify Later
             converter.write(str, ".\\temp\\" + id + ".svg", 60);
+            debug = true;
         }
         this.latex = p.loadShape(".\\temp\\" + id + ".svg").getChild("eq");
         this.latex.disableStyle();
@@ -38,6 +43,7 @@ public class ImmutableLaTeX {
         XML xml = p.loadXML(".\\temp\\" + id + ".svg").getChild("g");
 
         tex = new ArrayList<>();
+        Vector prevPos = new Vector();
         for (int i = 0; i < latex.getChildCount(); i++){ // eq has max layer 2 children, layer 1 is filler (usually), layer 2 is the path (and maybe rect)
             PShape child = latex.getChild(i);
             boolean hasMultipleChildren = child.getChildCount() > 1;
@@ -52,16 +58,37 @@ public class ImmutableLaTeX {
             String[] values = findTranslateValues.substring(findTranslateValues.indexOf("(")+1,findTranslateValues.indexOf(")")).split(",");
             Vector pos = new Vector(Float.parseFloat(values[0]),Float.parseFloat(values[1]));
 
+
             if (hasMultipleChildren){
+                float x = Float.parseFloat(xmlChild.getChild(0).getString("x"));
+                float y = Float.parseFloat(xmlChild.getChild(0).getString("y"));
                 tex.add(new ShapeWrapper(child.getChild(0),color,new Vector(
-                        Float.parseFloat(xmlChild.getChild(0).getString("x")),Float.parseFloat(xmlChild.getChild(0).getString("y"))
-                )));
+                        x,y)
+                ));
+                if (prevPos.x < Math.max(pos.x,x))
+                    prevPos.x = Math.max(pos.x,x);
+                bbox.widths.add(prevPos.x);
+
+                if (prevPos.y < Math.max(pos.y,y))
+                    prevPos.y = Math.max(pos.y,y);
+                bbox.heights.add(prevPos.y);
                 tex.add(new ShapeWrapper(child.getChild(1),color,pos));
+
             } else {
                 tex.add(new ShapeWrapper(child.getChild(0),color,pos));
+                if (prevPos.x < pos.x)
+                    prevPos.x = pos.x;
+
+                if (prevPos.y < pos.y)
+                    prevPos.y = pos.y;
             }
+            bbox.widths.add(prevPos.x);
+            bbox.heights.add(prevPos.y);
         }
         color.setAlpha(0);
+
+        if (debug)
+            p.println("h1gh",bbox.widths, bbox.heights);
     }
 
     public PShape getShape(){
@@ -69,11 +96,16 @@ public class ImmutableLaTeX {
     }
 
     public void setColor(Color color){
+        this.setColor(color,false);
+    }
+
+    public void setColor(Color color, boolean init){
         this.color = color;
         for (ShapeWrapper s: tex){
             s.setColor(color);
         }
-        color.setAlpha(0);
+        if (init)
+            color.setAlpha(0);
     }
 
     public boolean draw(Vector pos){
@@ -88,7 +120,7 @@ public class ImmutableLaTeX {
         p.noStroke();
         //p.rect(x-zoo.getWidth()/2,y-zoo.getHeight()/2 + 5,x+zoo.getWidth()/2 + 20,y+zoo.getHeight()/2 + 15);
 
-        float width = PApplet.map(tex.get(tex.size()-1).getPos().x,tex.get(0).getPos().x,tex.get(tex.size()-1).getPos().x,-dim.x/2,dim.x/2);
+        float width = PApplet.map(bbox.getBoundingWidth(tex.size()-1),tex.get(0).getPos().x,tex.get(tex.size()-1).getPos().x,-dim.x/2,dim.x/2);
         p.rect(x - dim.x/2, y-dim.y/2 + 5,x + width + 20, y+dim.y/2 + 15);
         p.shapeMode(CORNER); // necessary evil
         for (ShapeWrapper s: tex) {
@@ -122,14 +154,15 @@ public class ImmutableLaTeX {
     }
 
     //TODO: add getWidth(List<ShapeWrapper>, options) method
-    public PShape splice(int i, int j){
-        PShape total = p.createShape(GROUP);
-        for (ShapeWrapper s: tex.subList(i,j)) {
-            p.fill(s.getColor());
-            //p.shape(s.getShape(),0,0);
-            total.addChild(s.getShape());
-        }
-        p.shape(total);
-        return total;
+    public List<ShapeWrapper> getSubtex(int i, int j){
+        return this.tex.subList(i,j);
+    }
+
+    public List<ShapeWrapper> getSubtex(int i){
+        return this.getSubtex(i,tex.size());
+    }
+
+    public Color getColor() {
+        return this.color;
     }
 }
