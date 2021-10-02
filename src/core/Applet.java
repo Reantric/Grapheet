@@ -50,6 +50,10 @@ public class Applet extends PApplet {
         this.rect(pos.x,pos.y,pos1.x,pos1.y);
     }
 
+    public void scale(Vector scale){
+        this.scale(scale.x,scale.y);
+    }
+
     /*public Shape createShape() {
         try {
             return new Shape(g.createShape());

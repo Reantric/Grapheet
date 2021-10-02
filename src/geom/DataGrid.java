@@ -245,7 +245,7 @@ public class DataGrid {
         update();
         p.translate(PVector.mult(camera,-1));
         generate();
-        boolean b = spacing.easeTo(new Vector(2*WIDTH/3f,2*HEIGHT/3f),1); // better to err on the side of caution
+        boolean b = spacing.interpolate(new Vector(2*WIDTH/3f,2*HEIGHT/3f),1); // better to err on the side of caution
        // camera.easeTo(new Vector(1200,-300),QUADRATIC,15);
        // PApplet.println(begin,end);
    //     incrementor.add(new Vector(0.1f));

@@ -1,4 +1,5 @@
 package storage;
+import util.map.Interpolatable;
 import util.map.MapEase;
 import util.map.MapType;
 
@@ -6,7 +7,7 @@ import java.util.Objects;
 
 import static util.map.MapType.QUADRATIC;
 
-public class Color {
+public class Color implements Interpolatable<Color> {
     Subcolor hue, saturation, brightness, alpha;
     boolean interpStatus = true;
 
@@ -121,20 +122,20 @@ public class Color {
         alpha.setValue(newAlpha);
     }
 
-    public boolean interpolate(Color color, MapType interpType, float time, MapEase easing) {
-        interpStatus = this.getHue().easeTo(color.getHue().getValue(), interpType, time, easing) &
-                this.getSaturation().easeTo(color.getSaturation().getValue(), interpType,time , easing) &
-                this.getBrightness().easeTo(color.getBrightness().getValue(), interpType, time, easing) &
-                this.getAlpha().easeTo(color.getAlpha().getValue(), interpType, time, easing);
+    public boolean interpolate(Color color, MapType interpType, MapEase easing, double time) {
+        interpStatus = this.getHue().interpolate(color.getHue().getValue(), interpType, easing, time) &
+                this.getSaturation().interpolate(color.getSaturation().getValue(), interpType , easing, time) &
+                this.getBrightness().interpolate(color.getBrightness().getValue(), interpType, easing,  time) &
+                this.getAlpha().interpolate(color.getAlpha().getValue(), interpType, easing, time);
         return interpStatus;
     }
 
     public boolean interpolate(Color color) {
-        return this.interpolate(color, QUADRATIC, 1, MapEase.EASE_IN_OUT);
+        return this.interpolate(color, QUADRATIC, MapEase.EASE_IN_OUT,1);
     }
 
-    public boolean interpolate(Color color, float time) {
-        return this.interpolate(color, QUADRATIC, time, MapEase.EASE_IN_OUT);
+    public boolean interpolate(Color color, double time) {
+        return this.interpolate(color, QUADRATIC, MapEase.EASE_IN_OUT,time);
     }
 
 

@@ -3,14 +3,14 @@ package storage;
 import java.util.ArrayList;
 import java.util.List;
 
-public class BoundingBox {
-    public List<Float> widths = new ArrayList<>();
-    public List<Float> heights = new ArrayList<>();
+public class BoundingBox { // vec.x is low, vec.y is high
+    public List<Vector> widths = new ArrayList<>();
+    public List<Vector> heights = new ArrayList<>();
 
-    public float getBoundingWidth(int t){ // t is index!
+    public Vector getBoundingWidth(int t){ // t is index!
         return widths.get(t);
     }
-    public float getBoundingHeight(int t){ // t is index!
+    public Vector getBoundingHeight(int t){ // t is index!
         return heights.get(t);
     }
 }

@@ -8,6 +8,7 @@ public class ShapeWrapper {
     PShape shape;
     Color color;
     Vector pos;
+    Vector scale = new Vector(1,1);
 
     public ShapeWrapper(PShape shape, Color color) {
         this.shape = shape;
@@ -18,6 +19,13 @@ public class ShapeWrapper {
         this.shape = shape;
         this.pos = pos;
         this.color = color;
+    }
+
+    public ShapeWrapper(PShape shape, Color color, Vector pos, Vector scale) {
+        this.shape = shape;
+        this.color= color;
+        this.pos = pos;
+        this.scale = scale;
     }
 
 
@@ -39,5 +47,13 @@ public class ShapeWrapper {
 
     public Vector getPos() {
         return this.pos;
+    }
+
+    public Vector getScale(){
+        return this.scale;
+    }
+
+    public void setScale(Vector scale){
+        this.scale = scale;
     }
 }

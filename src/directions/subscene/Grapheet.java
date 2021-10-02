@@ -55,7 +55,7 @@ public class Grapheet extends Scene {
     public boolean executeHelper() {
         step[0] = plane.draw();
         if (step[0]) {
-            plane.getCamera().easeTo(new Vector(200, -200), 6);
+            plane.getCamera().interpolate(new Vector(200, -200), 6);
             step[1] = this.graph();
         }
 
