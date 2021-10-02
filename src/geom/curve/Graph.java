@@ -4,6 +4,9 @@ import geom.Grid;
 import storage.Color;
 import storage.ColorType;
 import storage.Vector;
+import util.map.Interpolatable;
+import util.map.MapEase;
+import util.map.MapType;
 
 import java.util.Arrays;
 import java.util.function.Function;
@@ -11,7 +14,7 @@ import java.util.function.Function;
 import static geom.DataGrid.WIDTH;
 import static processing.core.PConstants.EPSILON;
 
-public class Graph { // 2D graph, fuck 3D
+public class Graph implements Interpolatable<Function<Double,Double>> { // 2D graph, fuck 3D, maybe change Interp<Func> to Interp<Graph>?
     Color color = new Color(ColorType.GREEN);
     float[] xValues;
     float[] yValues;
@@ -62,11 +65,11 @@ public class Graph { // 2D graph, fuck 3D
                 continue;
             plane.p.line(xValues[i],yValues[i],xValues[i+1],yValues[i+1]);
         }
-        return index.easeTo(new Vector(xValues.length-1),time);
+        return index.interpolate(new Vector(xValues.length-1),time);
     }
 
     private Vector incrementor = new Vector(0);
-    public boolean interpolate(Function<Double,Double> g){ //add interpolate(Graph g) later!
+    public boolean interpolate(Function<Double,Double> g, MapType type, MapEase ease, double time){ //add interpolate(Graph g) later!
         g = g.andThen(t -> -t);
         if (f.equals(g)){
             return true;
@@ -76,7 +79,7 @@ public class Graph { // 2D graph, fuck 3D
         for (int i = 0; i < yValues.length; i++){
             yValues[i] = (1-incrementor.x) * ((float) (recipScaleY * f.apply((double) (xValues[i]/recipScaleX)))) + incrementor.x * ((float) (recipScaleY * g.apply((double) (xValues[i]/recipScaleX))));
         }
-        if (incrementor.easeTo(1)) {
+        if (incrementor.interpolate(new Vector(1), type,ease,time)) {
             this.f = g;
             incrementor = new Vector(0);
             return true;

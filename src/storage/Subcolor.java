@@ -2,12 +2,13 @@ package storage;
 
 
 import util.Mapper;
+import util.map.Interpolatable;
 import util.map.MapEase;
 import util.map.MapType;
 
 import static util.map.MapType.QUADRATIC;
 
-public class Subcolor { // TODO: define some Easable interface
+public class Subcolor implements Interpolatable<Float> {
     float value, prevVal;
     long incrementor;
     boolean interpolationComplete = true;
@@ -42,7 +43,7 @@ public class Subcolor { // TODO: define some Easable interface
         return String.valueOf(value);
     }
 
-    public boolean easeTo(Float bound, MapType interpType, float time, MapEase easing) {
+    public boolean interpolate(Float bound, MapType interpType, MapEase easing, double time) {
         if (interpolationComplete) {
             prevVal = value;
             incrementor = 0;
@@ -57,19 +58,19 @@ public class Subcolor { // TODO: define some Easable interface
         return interpolationComplete;
     }
 
-    public boolean easeTo(int bound, MapType interpType, float time) {
-        return easeTo((float) bound, interpType, time, MapEase.EASE_IN_OUT);
+    public boolean interpolate(int bound, MapType interpType, double time) {
+        return interpolate((float) bound, interpType, MapEase.EASE_IN_OUT, time);
     }
 
-    public boolean easeTo(float bound) {
-        return this.easeTo(bound, QUADRATIC, 1, MapEase.EASE_IN_OUT);
+    public boolean interpolate(float bound) {
+        return this.interpolate(bound, QUADRATIC, MapEase.EASE_IN_OUT,1);
     }
 
-    public boolean easeTo(float bound, float time) {
-        return this.easeTo(bound, QUADRATIC, time, MapEase.EASE_IN_OUT);
+    public boolean interpolate(float bound, double time) {
+        return this.interpolate(bound, QUADRATIC, MapEase.EASE_IN_OUT,time);
     }
 
-    public boolean easeTo(float bound, MapEase easing) {
-        return this.easeTo(bound, QUADRATIC, 1, easing);
+    public boolean interpolate(float bound, MapEase easing) {
+        return this.interpolate(bound, QUADRATIC, easing, 1);
     }
 }

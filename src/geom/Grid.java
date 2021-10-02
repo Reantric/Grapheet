@@ -53,6 +53,8 @@ public class Grid {
     private void update(){
         displacement = PVector.sub(camera,startingCamera);
         scale = new Vector(baseIncrementor.x/(startingIncrementor.x * incrementor.x),baseIncrementor.y/(startingIncrementor.y * incrementor.y)); // wtf
+        // perhaps scale ought to decide incrementor?
+
 
         // once fadingLines occur, update baseIncrementor using rules from 2DGP
         begin.x = (float) ceilAny(displacement.x - WIDTH/2f,incrementor.x);
@@ -173,7 +175,7 @@ public class Grid {
         drawMainAxes();
         label();
         //p.println(incrementor);
-        return spacing.easeTo(new Vector(WIDTH/2f,HEIGHT/2f),1) & textColor.getAlpha().easeTo(100);
+        return spacing.interpolate(new Vector(WIDTH/2f,HEIGHT/2f),1) & textColor.getAlpha().interpolate(100);
     }
 
     public Graph graph(Function<Double,Double> f){
