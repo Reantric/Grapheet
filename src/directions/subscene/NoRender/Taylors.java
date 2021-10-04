@@ -1,4 +1,4 @@
-package directions.subscene;
+package directions.subscene.NoRender;
 
 import core.Applet;
 import directions.Scene;
@@ -47,20 +47,6 @@ public class Taylors extends Scene {
         for (int i = 0; i < 5; i++){
             taylorValue.add(function.value(new DerivativeStructure(1,2*i+1,0,0)));
         }
-
-       /* new ImmutableLaTeX(window, """
-                \\[\\begin{bmatrix}
-                                                   -1 & 1 \\\\
-                                                   1 & 1
-                                                  \\end{bmatrix}^{-1} \\left(\\begin{bmatrix}
-                                                   -1 & 1 \\\\
-                                                   1 & 1
-                                                  \\end{bmatrix} \\cdot \\begin{bmatrix}
-                                                   1 & 0 \\\\
-                                                   0 & 1
-                                                  \\end{bmatrix}\\right)\\] \\\\"""
-        ); */
-
     }
 
     @Override

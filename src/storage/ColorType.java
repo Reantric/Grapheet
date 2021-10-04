@@ -7,5 +7,6 @@ public enum ColorType {
     MAGENTA,
     WHITE,
     BLACK,
-    ORANGE
+    ORANGE,
+    YELLOW,
 }
