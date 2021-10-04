@@ -1,4 +1,4 @@
-package directions.subscene;
+package directions.subscene.NoRender;
 
 import core.Applet;
 import directions.Scene;

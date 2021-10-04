@@ -34,29 +34,23 @@ public class ImmutableLaTeX {
     Vector scale = new Vector(1,1);
     static long counterID = 0;
     long id;
-    static Map<String,Long> encodedID = new HashMap<>();
+    public static Map<String,Long> encodedID = new HashMap<>();
+    public static Path path;
 
-    public ImmutableLaTeX(Applet p, String str) {
-        Path filePath = Paths.get(".\\temp\\hashes.txt");
-        try {
-            if (!Files.exists(filePath)) {
-                Files.createFile(filePath);
-            } else { // file exists, load in hashmap!
-                String content = Files.readString(filePath);
-                System.out.println(content);
-            }
-        } catch (IOException e){
-            e.printStackTrace();
-        }
-
+    public ImmutableLaTeX(Applet p, String str, Color color) {
         this.p = p;
         String eID = encode(str);
-        this.color = new Color(ColorType.BLACK);
+        this.color = color;
         boolean debug = false;
 
         if (!encodedID.containsKey(eID)) {
             this.id = ++counterID;
             encodedID.put(eID,id);
+            try {
+                Files.writeString(path, eID + " " + id + "\n", StandardOpenOption.APPEND);
+            } catch (IOException e){
+                e.printStackTrace();
+            }
             converter = new SVGConverter(color); // TODO: Modify Later
             converter.write(str, ".\\temp\\" + id + ".svg", 60);
             debug = true;
@@ -68,6 +62,10 @@ public class ImmutableLaTeX {
         dim = new Vector(latex.getWidth(),latex.getHeight());
         setupBoundingBoxCrap(debug);
         color.setAlpha(0);
+    }
+
+    public ImmutableLaTeX(Applet p, String str){ // allow bunching them up like in that manim example
+        this(p,str,new Color(ColorType.CYAN));
     }
 
     private void setupBoundingBoxCrap(boolean debug){
