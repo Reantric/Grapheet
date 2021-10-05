@@ -13,62 +13,53 @@ import util.tex.SVGConverter;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-import static processing.core.PConstants.*;
+import static processing.core.PConstants.CORNER;
+import static processing.core.PConstants.MAX_FLOAT;
 
-public class ImmutableLaTeX {
+public class ImmutableTex {
     PShape latex;
     Color color;
     SVGConverter converter;
     Applet p;
     Vector dim;
+    Vector pos = new Vector();
     public List<ShapeWrapper> tex;
     BoundingBox bbox = new BoundingBox();
     int endingInd;
     Vector scale = new Vector(1,1);
-    static long counterID = 0;
-    long id;
-    public static Map<String,Long> encodedID = new HashMap<>();
-    public static Path path;
 
-    public ImmutableLaTeX(Applet p, String str, Color color) {
+    public ImmutableTex(Applet p, String str, Color color) {
         this.p = p;
-        String eID = encode(str);
+        int id = encode(str);
         this.color = color;
         boolean debug = false;
 
-        if (!encodedID.containsKey(eID)) {
-            this.id = ++counterID;
-            encodedID.put(eID,id);
-            try {
-                Files.writeString(path, eID + " " + id + "\n", StandardOpenOption.APPEND);
-            } catch (IOException e){
-                e.printStackTrace();
-            }
+        if (!new File(".\\temp\\" + id + ".svg").exists()) {
             converter = new SVGConverter(color); // TODO: Modify Later
             converter.write(str, ".\\temp\\" + id + ".svg", 60);
             debug = true;
-        } else
-            this.id = encodedID.get(eID);
+        }
 
         this.latex = p.loadShape(".\\temp\\" + id + ".svg").getChild("eq");
         this.latex.disableStyle();
         dim = new Vector(latex.getWidth(),latex.getHeight());
-        setupBoundingBoxCrap(debug);
+        setupBoundingBoxCrap(debug,id);
         color.setAlpha(0);
     }
 
-    public ImmutableLaTeX(Applet p, String str){ // allow bunching them up like in that manim example
+    public ImmutableTex(Applet p, String str){ // allow bunching them up like in that manim example
         this(p,str,new Color(ColorType.CYAN));
     }
 
-    private void setupBoundingBoxCrap(boolean debug){
+    private void setupBoundingBoxCrap(boolean debug,int id){
         XML xml = p.loadXML(".\\temp\\" + id + ".svg").getChild("g");
 
         tex = new ArrayList<>();
@@ -132,8 +123,8 @@ public class ImmutableLaTeX {
             bbox.heights.add(new Vector(prevPosLow.y,prevPosHigh.y)); // this is left/bottom justified, that might be a problem...
         }
         endingInd = tex.size()-1;
-       // if (debug)
-        //    p.println("h1gh",bbox.heights);
+        if (debug)
+            p.println("h1gh",bbox.heights);
     }
 
     public void setBoundingBoxIndex(int index){this.endingInd = index;}
@@ -163,8 +154,8 @@ public class ImmutableLaTeX {
             color.setAlpha(0);
     }
 
-    public boolean draw(Vector pos){
-        return this.draw(pos.x,pos.y);
+    public void setPos(Vector pos){
+        this.pos = pos;
     }
 
     Color darkGrey = new Color(0,0,0,60);
@@ -183,14 +174,15 @@ public class ImmutableLaTeX {
         //p.rect(x - dim.x/2, y+height + 5,x + width + 20, y+dim.y/2 + 15); // justified left bottom, fix later if need be (god this is pain)
     }
 
-    public boolean draw(float x, float y) {
-        drawBoundingBox(x, y);
+
+    public boolean draw() {
+        //drawBoundingBox(x, y);
 
         p.shapeMode(CORNER); // necessary evil
         for (ShapeWrapper s: tex) {
             Vector scale = s.getScale();
             p.fill(s.getColor());
-            p.shape(s.getShape(),x,y,s.getShape().getWidth()*scale.x,s.getShape().getHeight()*scale.y);
+            p.shape(s.getShape(),pos.x,pos.y,s.getShape().getWidth()*scale.x,s.getShape().getHeight()*scale.y);
         }
         return color.getAlpha().interpolate(100);
     }
@@ -199,22 +191,8 @@ public class ImmutableLaTeX {
         latex.translate(x,y);
     }
 
-    public static String encode(String s){ // TODO: possibly use Huffman coding? LOL
-        String b = s.replaceAll("\\s","");
-        // System.out.println(b);
-        StringBuilder id = new StringBuilder();
-        for (char c: b.toCharArray()){
-            id.append(String.format("%03d", (int) c));
-        }
-        return id.toString();
-    }
-
-    public static String decode(String n){
-        StringBuilder og = new StringBuilder();
-        for (int i = 0; i < n.length(); i+=3){
-            og.append((char) Integer.parseInt(n.substring(i,i+3)));
-        }
-        return og.toString();
+    public static int encode(String s){
+        return s.replaceAll("\\s+","").hashCode();
     }
 
     public List<ShapeWrapper> getSubtex(int i, int j){
@@ -235,5 +213,9 @@ public class ImmutableLaTeX {
         for (ShapeWrapper s: tex){
             s.setScale(scale);
         }
+    }
+
+    public Vector getPos() {
+        return this.pos;
     }
 }

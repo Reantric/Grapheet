@@ -10,7 +10,7 @@ import org.apache.commons.math3.analysis.function.Sin;
 import storage.Color;
 import storage.ColorType;
 import storage.Vector;
-import text.ImmutableLaTeX;
+import text.ImmutableTex;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,19 +19,19 @@ public class Taylors extends Scene {
     Grid plane;
     UnivariateDifferentiableFunction function;
     Graph sin, taylor;
-    ImmutableLaTeX sinText;
-    ImmutableLaTeX taylorText;
+    ImmutableTex sinText;
+    ImmutableTex taylorText;
     List<DerivativeStructure> taylorValue = new ArrayList<>();
 
     public Taylors(Applet window) {
         super(window);
         plane = new Grid(window);
         plane.setColor(new Color(207,97,99));
-        sinText = new ImmutableLaTeX(window,"y = \\sin(x)");
+        sinText = new ImmutableTex(window,"y = \\sin(x)");
         sinText.setColor(new Color(ColorType.GREEN),true);
         sinText.setScale(new Vector(2,2));
 
-        taylorText = new ImmutableLaTeX(window,"y = x - \\frac{x^3}{3!} + \\frac{x^5}{5!} - \\frac{x^7}{7!}");
+        taylorText = new ImmutableTex(window,"y = x - \\frac{x^3}{3!} + \\frac{x^5}{5!} - \\frac{x^7}{7!}");
         taylorText.setColor(new Color(ColorType.MAGENTA),true);
         taylorText.getSubtex(3).forEach(s -> {
             Color c = new Color(s.getColor());
@@ -59,7 +59,8 @@ public class Taylors extends Scene {
         }
         if (step[1]) {
             step[2] = sin.draw();
-            sinText.draw(plane.planeToCanvas(new Vector(-5,2.4f)));
+            sinText.setPos(plane.planeToCanvas(new Vector(-5,2.4f)));
+            sinText.draw();
         }
 
         if (step[2] && !step[3]){
@@ -70,7 +71,8 @@ public class Taylors extends Scene {
 
         if (step[3]) {
             step[4] = taylor.draw();
-            taylorText.draw(plane.planeToCanvas(new Vector(3,2)));
+            taylorText.setPos(plane.planeToCanvas(new Vector(3,2)));
+            taylorText.draw();
         }
 
         if (step[4] && !step[5]) {

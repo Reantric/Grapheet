@@ -12,6 +12,11 @@ import static util.map.MapType.QUADRATIC;
 public class Vector extends PVector implements Interpolatable<PVector> { // only dealing with 2D, 3D can fuck off
     private long incrementor = 0;
     private float uneasedX, uneasedY;
+    public static Vector UP = new Vector(0,-500);
+    public static Vector DOWN = new Vector(0,500);
+    public static Vector LEFT = new Vector(-500,0);
+    public static Vector RIGHT = new Vector(500,0);
+
     public Vector(float x, float y){
         super(x,y);
         uneasedX = this.x;
