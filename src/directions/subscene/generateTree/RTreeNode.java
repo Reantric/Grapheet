@@ -6,7 +6,7 @@ import processing.core.PShape;
 import storage.Color;
 import storage.ColorType;
 import storage.Vector;
-import text.ImmutableLaTeX;
+import text.ImmutableTex;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,7 +18,7 @@ public class RTreeNode {
     List<RTreeNode> children = new ArrayList<>();
     Vector pos;
     PShape nodeShape;
-    ImmutableLaTeX latex;
+    ImmutableTex latex;
     static float radius = 50;
     int val;
     static Applet p;
@@ -29,7 +29,7 @@ public class RTreeNode {
     public RTreeNode(RTreeNode parent, int val){
         parent.addChildren(this);
         this.val = val;
-        latex = new ImmutableLaTeX(p,Integer.toString(val));
+        latex = new ImmutableTex(p,Integer.toString(val));
     }
 
     public void setColor(Color color){
@@ -39,7 +39,7 @@ public class RTreeNode {
     public RTreeNode(int val){
         this.val = val;
         childNumber = -1;
-        latex = new ImmutableLaTeX(p,Integer.toString(val));
+        latex = new ImmutableTex(p,Integer.toString(val));
     }
 
     public PShape getNodeShape(){

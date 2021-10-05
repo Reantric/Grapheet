@@ -2,7 +2,7 @@ package directions.subscene.generateTree;
 
 import core.Applet;
 import storage.Vector;
-import text.ImmutableLaTeX;
+import text.ImmutableTex;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -64,7 +64,7 @@ public class RPath extends RTree {
         System.out.println(incrementor);
         this.incrementor.add(0L);
         this.incrementor.add(0L);
-        node.latex = new ImmutableLaTeX(p,"th"); // me amo ape
+        node.latex = new ImmutableTex(p,"th"); // me amo ape
         node.setPos(new Vector(parent.pos.x,parent.pos.y+200));
       //  completedDraw = false;
     }
