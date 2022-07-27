@@ -77,9 +77,9 @@ public class DataGrid {
 
     public DataGrid(Applet p){
         this.p = p;
-        String commonPath = "src\\data\\";
+        String commonPath = "src/data/";
         font = p.createFont(commonPath + "cmunbmr.ttf", 150, true);
-        color = new Color(0,0,95);
+        color = new Color(0,0,65);
         // Empty for now because nothing much really happens
     }
 
@@ -95,12 +95,13 @@ public class DataGrid {
     }
 
     private void update(){
-        if (camera.x > 20)
+        if (camera.x > 80)
             startMoving.x = true;
 
-        startMoving.y = camera.y < 170-incrementor.y; // suppose camera goes up and down?
+        startMoving.y = camera.y < 170-200; // suppose camera goes up and down?
 
         displacement = PVector.sub(camera,startingCamera);
+        //startingBegin.y = (int) floorAny(HEIGHT/2f + startingCamera.y, incrementor.y);
     }
 
     private void generate(){
@@ -133,11 +134,11 @@ public class DataGrid {
             }
         }
 
-        begin.y = (int) floorAny(HEIGHT/2f + camera.y, 200);
-        end.y = (int) floorAny(-HEIGHT/2f + camera.y, incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
+        begin.y = (float) floorAny(HEIGHT/2f - 15, 200); // this isn't good but it works for now
+        end.y = (float) floorAny(-HEIGHT/2f + camera.y, incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
 
         ender = (begin.y-end.y)/incrementor.y;
-        for (int j = 0; j < ender; j++){  // draws horiz lines, processing draws y up to down cuz flipped (so invert the bounds)
+        for (int j = 0; j <= ender; j++){  // draws horiz lines, processing draws y up to down cuz flipped (so invert the bounds)
             float y = begin.y - j*incrementor.y;
             if (Math.abs(Math.IEEEremainder(y-startingBegin.y, 2*incrementor.y)) < EPSILON)
                 p.strokeWeight(largeStroke);
@@ -179,9 +180,9 @@ public class DataGrid {
 
         p.stroke(ColorType.RED);
         float ender = (begin.y-end.y)/incrementor.y; // remember y's flipped!
-        for (int j = 0; j < ender; j++){
+        for (int j = 0; j <= ender; j++){
             float y = begin.y - j*incrementor.y;
-            if (Math.abs(Math.IEEEremainder(y-startingBegin.y, 2*incrementor.y)) < EPSILON) {
+             if (Math.abs(Math.IEEEremainder(y-startingBegin.y, 2*incrementor.y)) < EPSILON) {
                 // -600 is the original begin.y <--- dont trust anything idk
                 float txt = textify(y,Y);
                 float yCoord;
@@ -236,7 +237,7 @@ public class DataGrid {
     public float textify(float r, int XorY){
         if (XorY == X)
             return 1/scale.x * (r-startingBegin.x); // begin.x ORIGINAL
-        return -1/scale.y * (r-startingBegin.y); // begin.y ORIGINAL
+        return -1/scale.y * 200/incrementor.y * (r-startingBegin.y); // begin.y ORIGINAL
     }
 
     public boolean draw(){

@@ -49,7 +49,7 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
         xValues[ender] = (float) (recipScaleX * bounds.y);
         yValues[ender] = (float) (recipScaleY * f.apply((double) bounds.y));
         //System.out.println(Arrays.toString(xValues));
-        System.out.println(Arrays.toString(yValues));
+        // System.out.println(Arrays.toString(yValues));
         this.f = f;
     }
 

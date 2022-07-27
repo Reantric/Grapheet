@@ -9,6 +9,7 @@ version '1.0-SNAPSHOT'
 
 repositories {
     mavenCentral()
+    maven { url 'https://jitpack.io' }
 }
 sourceSets {
     main {
@@ -19,9 +20,10 @@ sourceSets {
 }
 dependencies {
 
-    implementation fileTree(dir: 'library/processing', include: ['*.jar'])
+    implementation 'com.github.micycle1:processing-core-4:4.0b8'
+    //implementation fileTree(dir: 'library/processing', include: ['*.jar'])
 
-    implementation fileTree(dir: 'library/VideoExport', include: ['*.jar'])
+    implementation fileTree(dir: 'library/videoExport/library', include: ['*.jar'])
 
     implementation group: 'org.scilab.forge', name: 'jlatexmath', version: '1.0.7'
 

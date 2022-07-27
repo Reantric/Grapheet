@@ -1,4 +1,4 @@
-import com.hamoid.VideoExport;
+import videoExport.*;
 import core.Applet;
 import directions.Directions;
 import processing.core.PApplet;
@@ -14,7 +14,7 @@ public class Main extends Applet {
     public VideoExport videoExport;
 
     public void setup(){
-        String commonPath = "src\\data\\";
+        String commonPath = "src/data/";
         myFont = createFont(commonPath + "cmunbmr.ttf", 150, true);
         italics = createFont(commonPath + "cmunbmo.ttf", 150, true);
         try {
@@ -23,19 +23,19 @@ public class Main extends Applet {
             noSuchMethodException.printStackTrace();
         }
 
-        videoExport = new VideoExport(this,"taylors.mp4");
-        videoExport.setFfmpegPath("library\\ffmpeg.exe");
+        videoExport = new VideoExport(this,"bruh.mp4");
+        videoExport.setFfmpegPath("library/ffmpeg");
         videoExport.setQuality(85,0);
         videoExport.setFrameRate(60);
         frameRate(60);
         //surface.setVisible(false);
-        //videoExport.startMovie();
+      //  videoExport.startMovie();
     }
 
 
     public void settings() {
         //size(WIDTH, HEIGHT, P2D);
-        fullScreen(P2D);// P2D freakishly slow
+        size(WIDTH,HEIGHT);// P2D freakishly slow
         smooth(8);
     }
 
@@ -55,7 +55,7 @@ public class Main extends Applet {
         init();
         if (Directions.directions()){ // if all scenes finishes, terminate!
             System.out.println("Goodbye");
-            videoExport.endMovie();
+            videoExport.dispose();
             exit();
         } else
             videoExport.saveFrame();
@@ -80,7 +80,7 @@ public class Main extends Applet {
 
     public void keyPressed() {
         if (key == 'q') {
-            videoExport.endMovie();
+            videoExport.dispose();
             exit();
         }
     }

@@ -47,5 +47,5 @@
     "-2",
     "[output]"
   ],
-  "ffmpeg_path": "library\\ffmpeg.exe"
+  "ffmpeg_path": "library/ffmpeg.exe"
 }

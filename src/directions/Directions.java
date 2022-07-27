@@ -16,7 +16,7 @@ public class Directions {
     public static List<Scene> allScenes = new ArrayList<>(); // Order must be preserved!
 
     public static void init(Applet window) throws NoSuchMethodException, IllegalAccessException, InvocationTargetException, InstantiationException {
-        File[] files = new File(".\\src\\directions\\subscene").listFiles();
+        File[] files = new File("./src/directions/subscene").listFiles();
 
         if (files != null)
             for (File file : files) {
@@ -36,7 +36,7 @@ public class Directions {
 
                 }
             }
-        System.out.println(allScenes);
+        System.out.println("Scenes: " + allScenes);
     }
 
     public static boolean directions() {

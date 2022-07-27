@@ -42,13 +42,13 @@ public class ImmutableTex {
         this.color = color;
         boolean debug = false;
 
-        if (!new File(".\\temp\\" + id + ".svg").exists()) {
+        if (!new File("./temp/" + id + ".svg").exists()) {
             converter = new SVGConverter(color); // TODO: Modify Later
-            converter.write(str, ".\\temp\\" + id + ".svg", 60);
+            converter.write(str, "./temp/" + id + ".svg", 60);
             debug = true;
         }
 
-        this.latex = p.loadShape(".\\temp\\" + id + ".svg").getChild("eq");
+        this.latex = p.loadShape("./temp/" + id + ".svg").getChild("eq");
         this.latex.disableStyle();
         dim = new Vector(latex.getWidth(),latex.getHeight());
         setupBoundingBoxCrap(debug,id);
@@ -60,7 +60,7 @@ public class ImmutableTex {
     }
 
     private void setupBoundingBoxCrap(boolean debug,int id){
-        XML xml = p.loadXML(".\\temp\\" + id + ".svg").getChild("g");
+        XML xml = p.loadXML("./temp/" + id + ".svg").getChild("g");
 
         tex = new ArrayList<>();
         Vector prevPosLow = new Vector(MAX_FLOAT,MAX_FLOAT), prevPosHigh = new Vector();

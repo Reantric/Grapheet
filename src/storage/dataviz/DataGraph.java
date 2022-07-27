@@ -38,8 +38,8 @@ public class DataGraph {
         this.name = name;
         distance = xValues[1]-xValues[0]; // let's just assume for the sake of niceness that it is the same
         // everywhere
-        System.out.println(xValues.length);
-        System.out.println(distance);
+        //System.out.println(xValues.length);
+        //System.out.println(distance);
     }
 
     public DataGraph(DataGrid dataGrid, Function<Double, Double> function, Color color){
