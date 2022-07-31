@@ -24,7 +24,8 @@ public class DataGrid {
     public static final int X = 3; // Make enum later (AXES)
     public static final int Y = 5;
     Applet p;
-
+    public boolean fade = false;
+    public int fadeIncrementor = 0;
     public Applet getProcessingInstance() {
         return p;
     }
@@ -67,7 +68,7 @@ public class DataGrid {
     Vector startingBegin = new Vector((float) ceilAny(startingCamera.x - WIDTH/2f,250),(int) floorAny(HEIGHT/2f + startingCamera.y, 200));
     // def incrementor: 200,200 // 203.8 fails
     Vector begin = new Vector(),end = new Vector();
-    Vector scale = new Vector(500,800);
+    Vector scale = new Vector(1000,800);
     PVector displacement = new Vector(0,0);
     TruthVector startMoving = new TruthVector();
     Color color;
@@ -101,7 +102,14 @@ public class DataGrid {
         startMoving.y = camera.y < 170-200; // suppose camera goes up and down?
 
         displacement = PVector.sub(camera,startingCamera);
-        //startingBegin.y = (int) floorAny(HEIGHT/2f + startingCamera.y, incrementor.y);
+        fade = incrementor.y < 100;
+        fadeIncrementor += fade ? 1 : 0;
+
+        if (incrementor.y <= 60 + EPSILON){
+            incrementor.y = 200;
+            scale.y /= 2;
+            fadeIncrementor = 0;
+        }
     }
 
     private void generate(){
@@ -140,11 +148,18 @@ public class DataGrid {
         ender = (begin.y-end.y)/incrementor.y;
         for (int j = 0; j <= ender; j++){  // draws horiz lines, processing draws y up to down cuz flipped (so invert the bounds)
             float y = begin.y - j*incrementor.y;
-            if (Math.abs(Math.IEEEremainder(y-startingBegin.y, 2*incrementor.y)) < EPSILON)
+            if (Math.abs(Math.IEEEremainder(y-startingBegin.y, 2*incrementor.y)) < EPSILON) {
                 p.strokeWeight(largeStroke);
-            else
+                color.setAlpha(100);
+            }
+            else {
                 p.strokeWeight(smallStroke);
+                if (fade)
+                    color.setAlpha((float) Mapper.map2(incrementor.y-fadeIncrementor,100,60,100,0,MapType.QUADRATIC,MapEase.EASE_IN_OUT));
+            }
 
+
+            p.stroke(color);
             if (startMoving.x) {
                 p.line(camera.x - spacing.x,y,camera.x + spacing.x,y);
             }
@@ -173,7 +188,7 @@ public class DataGrid {
         // y value rectangle
         p.fill(ColorType.BLACK);
         p.noStroke();
-        p.rect(displacement.x-WIDTH/2f,displacement.y-HEIGHT/2f,displacement.x + 153-WIDTH/2f,displacement.y + HEIGHT/2f); // buffer
+        p.rect(displacement.x-WIDTH/2f,displacement.y-HEIGHT/2f - 100,displacement.x + 153-WIDTH/2f,displacement.y + HEIGHT/2f); // buffer
         p.fill(ColorType.WHITE);
 
         p.textAlign(RIGHT,CENTER);

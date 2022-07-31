@@ -28,6 +28,8 @@ public class DataGraph {
     public Function<Double,Double> function;
     private static double distance = 0.004; // dont want to make final, distance between x
     public static double incrementor = 0;
+    public static double xDistanceFromOrigin = 161-WIDTH/2f;
+    public int firstInd = 1;
     public static double index = 0;
     public boolean nonNegative = true;
 
@@ -48,6 +50,7 @@ public class DataGraph {
         this.function = function;
         initializeValues();
         System.out.println(xValues.length);
+        moveX = xValues.length/600f;
     }
 
     public DataGraph(DataGrid dataGrid, double[] pv, Color color){
@@ -56,6 +59,7 @@ public class DataGraph {
 
     public static void setXValues(double[] xVals) {
         DataGraph.xValues = xVals;
+        moveX = xValues.length/600f;
     }
 
     public void draw(){
@@ -67,8 +71,9 @@ public class DataGraph {
          //   incrementor++;
     }
 
+    public static double moveX = 1.0/100;
     public static void update(){
-        incrementor += xValues.length/200f;
+        incrementor += moveX;
     }
 
     private void initializeValues(){
@@ -108,19 +113,23 @@ public class DataGraph {
         p.strokeWeight(5.5f);
         p.stroke(color);
         Vector scale = dataGrid.getScale();
+        Vector inc = dataGrid.getIncrementor();
         TruthVector moving = dataGrid.getMoving();
         if (incrementor < xValues.length) // start moving once this is no longer true?
-            index = Mapper.map2(incrementor,0,xValues.length,0,xValues.length, MapType.QUADRATIC, MapEase.EASE_IN_OUT);
+            index = Mapper.map2(incrementor,0,xValues.length,0,xValues.length, MapType.LINEAR, MapEase.EASE_IN_OUT); // og QUADRATIC
         else
             index = xValues.length;
-      //      index = grid.getDisplacement().x * 1/scale.x * 1/distance;
-     //   p.println(index-1,xValues[(int) index-1], pointValues[(int) index-1]);
-        //1 + Math.max(0,(int) (index-300))
-        // Maybe later add Math.max(index,beginIndex) for moving stuffs!!
-        for (int i = 1; i < index; i++){
-         //   if (pointValues[i] > 0 || !nonNegative) // IMPLY gate
-            p.line(161-WIDTH/2f + scale.x * (float) xValues[i-1],400-scale.y * (float) pointValues[i-1],161-WIDTH/2f + scale.x * (float) xValues[i],400-scale.y * (float) pointValues[i]);
+        xDistanceFromOrigin = 161-WIDTH/2f + scale.x * (float) xValues[Math.max(0,(int) index-1)];
+        while (firstInd < index && xValues[firstInd] * scale.x  < dataGrid.getDisplacement().x)
+            firstInd++;
+
+        for (int i = firstInd; i < index; i++){
+            p.line(161-WIDTH/2f + scale.x * (float) xValues[i-1],400-scale.y * inc.y / 200 * (float) pointValues[i-1],161-WIDTH/2f + scale.x * (float) xValues[i],400-scale.y * inc.y/200 * (float) pointValues[i]);
         }
+    }
+
+    public double evaluate(){
+        return 400-dataGrid.getScale().y * dataGrid.getIncrementor().y / 200 * (float) pointValues[Math.max(0,(int) index-1)];
     }
 
     public void setPointValues(double[] pv){
