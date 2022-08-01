@@ -74,7 +74,6 @@ public class Grapheet extends Scene {
 
         if (minMaxGraph.x < plane.getDisplacement().y - HEIGHT/2 + 40){ // cuz neg vals are how high u are
             plane.getIncrementor().y = 200*(400 - plane.getDisplacement().y + HEIGHT/2 - 40)/(200*(400-minMaxGraph.x)/plane.getIncrementor().y);
-            System.out.println(plane.getIncrementor().y);
             // ^ --> 400 - scale.y * inc.y / 200 * pointVal[index]
         }
 

@@ -126,7 +126,16 @@ public class DataGraph {
         for (int i = firstInd; i < index; i++){
             p.line(161-WIDTH/2f + scale.x * (float) xValues[i-1],400-scale.y * inc.y / 200 * (float) pointValues[i-1],161-WIDTH/2f + scale.x * (float) xValues[i],400-scale.y * inc.y/200 * (float) pointValues[i]);
         }
+        p.fill(ColorType.WHITE);
+        p.noStroke();
+        p.circle(161-WIDTH/2f + scale.x * (float) xValues[Math.max(0,(int) index-1)],400-scale.y * inc.y/200 * (float) pointValues[Math.max(0,(int) index-1)],20);
+        info();
     }
+
+    public void info(){
+
+    }
+
 
     public double evaluate(){
         return 400-dataGrid.getScale().y * dataGrid.getIncrementor().y / 200 * (float) pointValues[Math.max(0,(int) index-1)];

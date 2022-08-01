@@ -25,7 +25,7 @@ public class DataGrid {
     public static final int Y = 5;
     Applet p;
     public boolean fade = false;
-    public int fadeIncrementor = 0;
+    public double fadeIncrementor = 0;
     public Applet getProcessingInstance() {
         return p;
     }
@@ -95,6 +95,7 @@ public class DataGrid {
         p.ellipseMode(CENTER);
     }
 
+    int startFade = 130; // endis200?
     private void update(){
         if (camera.x > 80)
             startMoving.x = true;
@@ -102,13 +103,14 @@ public class DataGrid {
         startMoving.y = camera.y < 170-200; // suppose camera goes up and down?
 
         displacement = PVector.sub(camera,startingCamera);
-        fade = incrementor.y < 100;
-        fadeIncrementor += fade ? 1 : 0;
+        fade = incrementor.y < startFade;
+        fadeIncrementor += fade ? 0.1 : 0;
 
-        if (incrementor.y <= 60 + EPSILON){
+        if (incrementor.y <= 100 + EPSILON){
             incrementor.y = 200;
             scale.y /= 2;
             fadeIncrementor = 0;
+            fade = false;
         }
     }
 
@@ -155,7 +157,7 @@ public class DataGrid {
             else {
                 p.strokeWeight(smallStroke);
                 if (fade)
-                    color.setAlpha((float) Mapper.map2(incrementor.y-fadeIncrementor,100,60,100,0,MapType.QUADRATIC,MapEase.EASE_IN_OUT));
+                    color.setAlpha((float) Mapper.map2(incrementor.y-fadeIncrementor,startFade,100,100,0,MapType.QUADRATIC,MapEase.EASE_IN_OUT));
             }
 
 
@@ -184,12 +186,13 @@ public class DataGrid {
         }
     }
 
+    Color whiteText = new Color(ColorType.WHITE);
     public void label(){
         // y value rectangle
         p.fill(ColorType.BLACK);
         p.noStroke();
         p.rect(displacement.x-WIDTH/2f,displacement.y-HEIGHT/2f - 100,displacement.x + 153-WIDTH/2f,displacement.y + HEIGHT/2f); // buffer
-        p.fill(ColorType.WHITE);
+
 
         p.textAlign(RIGHT,CENTER);
 
@@ -199,13 +202,18 @@ public class DataGrid {
             float y = begin.y - j*incrementor.y;
              if (Math.abs(Math.IEEEremainder(y-startingBegin.y, 2*incrementor.y)) < EPSILON) {
                 // -600 is the original begin.y <--- dont trust anything idk
-                float txt = textify(y,Y);
+                double txt = textify(y,Y);
                 float yCoord;
                 if (y == begin.y) // hmm?
                     yCoord = y - 20;
                 else
                     yCoord = y - 2;
 
+                if (j % 4 == 2 && fade)
+                    whiteText.setAlpha((float) Mapper.map2(incrementor.y-fadeIncrementor,startFade,100,100,0,MapType.QUADRATIC,MapEase.EASE_IN_OUT));
+                else
+                    whiteText.setAlpha(100);
+                p.fill(whiteText);
                 p.text(df.format(Math.abs(txt)), displacement.x + 130 - WIDTH / 2f, yCoord); // account for everything !
 
             }
@@ -223,7 +231,7 @@ public class DataGrid {
         ender = (end.x-begin.x)/incrementor.x;
         for (int i = 0; i < ender; i++){
             float x = begin.x + i*incrementor.x;
-            float txt = textify(x,X);
+            double txt = textify(x,X);
             if (txt == 0)
                 continue;
 
@@ -249,7 +257,7 @@ public class DataGrid {
         return this.color;
     }
 
-    public float textify(float r, int XorY){
+    public double textify(float r, int XorY){
         if (XorY == X)
             return 1/scale.x * (r-startingBegin.x); // begin.x ORIGINAL
         return -1/scale.y * 200/incrementor.y * (r-startingBegin.y); // begin.y ORIGINAL
