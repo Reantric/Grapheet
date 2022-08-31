@@ -2,6 +2,7 @@ package storage.dataviz;
 
 import core.Applet;
 import geom.DataGrid;
+import processing.core.PFont;
 import processing.core.PShape;
 import storage.Color;
 import storage.ColorType;
@@ -21,6 +22,7 @@ import static processing.core.PConstants.LINES;
 
 public class DataGraph {
     public static double[] xValues; // Set them here, but Graph methods do not touch this!
+    public static int activeGraphCount = 0;
     public double[] pointValues;
     public Color color;
     public String name;
@@ -31,7 +33,8 @@ public class DataGraph {
     public static double xDistanceFromOrigin = 161-WIDTH/2f;
     public int firstInd = 1;
     public static double index = 0;
-    public boolean nonNegative = true;
+    public static PFont nameFont;
+
 
     public DataGraph(DataGrid dataGrid, double[] pv, Color color, String name){
         this.dataGrid = dataGrid;
@@ -39,6 +42,7 @@ public class DataGraph {
         this.color = color;
         this.name = name;
         distance = xValues[1]-xValues[0]; // let's just assume for the sake of niceness that it is the same
+        activeGraphCount++; // now this will also include inactive, fix later!
         // everywhere
         //System.out.println(xValues.length);
         //System.out.println(distance);
@@ -50,7 +54,7 @@ public class DataGraph {
         this.function = function;
         initializeValues();
         System.out.println(xValues.length);
-        moveX = xValues.length/600f;
+        moveX = xValues.length/2000f;
     }
 
     public DataGraph(DataGrid dataGrid, double[] pv, Color color){
@@ -59,7 +63,7 @@ public class DataGraph {
 
     public static void setXValues(double[] xVals) {
         DataGraph.xValues = xVals;
-        moveX = xValues.length/600f;
+        moveX = xValues.length/2000f;
     }
 
     public void draw(){
@@ -120,11 +124,12 @@ public class DataGraph {
         else
             index = xValues.length;
         xDistanceFromOrigin = 161-WIDTH/2f + scale.x * (float) xValues[Math.max(0,(int) index-1)];
-        while (firstInd < index && xValues[firstInd] * scale.x  < dataGrid.getDisplacement().x)
+        while (firstInd < index && xValues[firstInd] * scale.x  < dataGrid.getDisplacement().x) // - WIDTH/4 if you want line to persist
             firstInd++;
 
+        double offset = dataGrid.getXOffset();
         for (int i = firstInd; i < index; i++){
-            p.line(161-WIDTH/2f + scale.x * (float) xValues[i-1],400-scale.y * inc.y / 200 * (float) pointValues[i-1],161-WIDTH/2f + scale.x * (float) xValues[i],400-scale.y * inc.y/200 * (float) pointValues[i]);
+            p.line(161-WIDTH/2f + scale.x * (float) (xValues[i-1] - offset),400-scale.y * inc.y / 200 * (float) pointValues[i-1],161-WIDTH/2f + scale.x * (float) (xValues[i] - offset),400-scale.y * inc.y/200 * (float) pointValues[i]);
         }
         p.fill(ColorType.WHITE);
         p.noStroke();
@@ -133,7 +138,14 @@ public class DataGraph {
     }
 
     public void info(){
-
+        // ok lets go
+        Applet p = dataGrid.getProcessingInstance();
+        Vector scale = dataGrid.getScale();
+        Vector inc = dataGrid.getIncrementor();
+        p.fill(color);
+        p.textFont(dataGrid.getNameFont());
+        p.textSize(50);
+        p.text(name,90+161-WIDTH/2f + scale.x * (float) xValues[Math.max(0,(int) index-1)],-20 + 400-scale.y * inc.y/200 * (float) pointValues[Math.max(0,(int) index-1)]);
     }
 
 

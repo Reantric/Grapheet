@@ -8,15 +8,10 @@ import processing.event.MouseEvent;
 import java.lang.reflect.InvocationTargetException;
 
 import static geom.DataGrid.*;
-
 public class Main extends Applet {
-    public static PFont myFont, italics;
     public VideoExport videoExport;
 
     public void setup(){
-        String commonPath = "src/data/";
-        myFont = createFont(commonPath + "cmunbmr.ttf", 150, true);
-        italics = createFont(commonPath + "cmunbmo.ttf", 150, true);
         try {
             Directions.init(this);
         } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | InstantiationException noSuchMethodException) {

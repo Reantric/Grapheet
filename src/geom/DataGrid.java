@@ -12,7 +12,14 @@ import util.Mapper;
 import util.map.MapEase;
 import util.map.MapType;
 
+import java.sql.Timestamp;
 import java.text.DecimalFormat;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.List;
 
 import static processing.core.PConstants.*;
 import static util.Useful.ceilAny;
@@ -21,8 +28,7 @@ import static util.Useful.floorAny;
 public class DataGrid {
     public static final int WIDTH = 1920;
     public static final int HEIGHT = 1080;
-    public static final int X = 3; // Make enum later (AXES)
-    public static final int Y = 5;
+    public int cycle = 0; // 1 -> 2 -> 5 -> 1
     Applet p;
     public boolean fade = false;
     public double fadeIncrementor = 0;
@@ -68,19 +74,26 @@ public class DataGrid {
     Vector startingBegin = new Vector((float) ceilAny(startingCamera.x - WIDTH/2f,250),(int) floorAny(HEIGHT/2f + startingCamera.y, 200));
     // def incrementor: 200,200 // 203.8 fails
     Vector begin = new Vector(),end = new Vector();
-    Vector scale = new Vector(1000,800);
+    Vector scale = new Vector(800,800); // possible dynamic generation of scale?
     PVector displacement = new Vector(0,0);
     TruthVector startMoving = new TruthVector();
     Color color;
     PFont font;
-    DecimalFormat df = new DecimalFormat("####.##");
+    DecimalFormat df = new DecimalFormat("#.");
     public static float e = 1;
+    public PFont italics;
+    public PFont getNameFont() {
+        return nameFont;
+    }
 
+    public PFont nameFont;
     public DataGrid(Applet p){
         this.p = p;
         String commonPath = "src/data/";
         font = p.createFont(commonPath + "cmunbmr.ttf", 150, true);
         color = new Color(0,0,65);
+        italics = p.createFont(commonPath + "cmunbmo.ttf", 150, true);
+        nameFont = p.createFont("Lato Bold",150,true);
         // Empty for now because nothing much really happens
     }
 
@@ -96,6 +109,7 @@ public class DataGrid {
     }
 
     int startFade = 130; // endis200?
+    int endFade = cycle != 2 ? 100 : 80;
     private void update(){
         if (camera.x > 80)
             startMoving.x = true;
@@ -104,13 +118,23 @@ public class DataGrid {
 
         displacement = PVector.sub(camera,startingCamera);
         fade = incrementor.y < startFade;
-        fadeIncrementor += fade ? 0.1 : 0;
+        endFade = cycle != 2 ? 100 : 80;
+       // fadeIncrementor += fade ? 0.1 : 0;
 
-        if (incrementor.y <= 100 + EPSILON){
+        if (cycle != 2 && incrementor.y <= 100 + EPSILON){ // this is /2, only happen if we are at 1 or 5
             incrementor.y = 200;
             scale.y /= 2;
             fadeIncrementor = 0;
             fade = false;
+            cycle <<= 1;
+            cycle %= 9;
+        }
+        if (cycle == 2 && incrementor.y <= 80){
+            incrementor.y = 200;
+            scale.y /= 2.5;
+            fadeIncrementor = 0;
+            fade = false;
+            cycle = 5;
         }
     }
 
@@ -120,7 +144,7 @@ public class DataGrid {
         p.noFill();
 
         begin.x = (float) ceilAny(displacement.x - WIDTH/2f,250);
-        end.x = (float) ceilAny(camera.x + WIDTH/2f,250);
+        end.x = (float) ceilAny(camera.x + WIDTH/2f + 250,250);
 
         float ender = (end.x-begin.x)/incrementor.x;
         for (int i = 0; i < ender; i++){ // draws vert lines
@@ -157,7 +181,7 @@ public class DataGrid {
             else {
                 p.strokeWeight(smallStroke);
                 if (fade)
-                    color.setAlpha((float) Mapper.map2(incrementor.y-fadeIncrementor,startFade,100,100,0,MapType.QUADRATIC,MapEase.EASE_IN_OUT));
+                    color.setAlpha((float) Mapper.map2(incrementor.y-fadeIncrementor,startFade,endFade,100,0,MapType.QUADRATIC,MapEase.EASE_IN_OUT));
             }
 
 
@@ -202,7 +226,7 @@ public class DataGrid {
             float y = begin.y - j*incrementor.y;
              if (Math.abs(Math.IEEEremainder(y-startingBegin.y, 2*incrementor.y)) < EPSILON) {
                 // -600 is the original begin.y <--- dont trust anything idk
-                double txt = textify(y,Y);
+                double num = textify(y);
                 float yCoord;
                 if (y == begin.y) // hmm?
                     yCoord = y - 20;
@@ -210,13 +234,24 @@ public class DataGrid {
                     yCoord = y - 2;
 
                 if (j % 4 == 2 && fade)
-                    whiteText.setAlpha((float) Mapper.map2(incrementor.y-fadeIncrementor,startFade,100,100,0,MapType.QUADRATIC,MapEase.EASE_IN_OUT));
+                    whiteText.setAlpha((float) Mapper.map2(incrementor.y-fadeIncrementor,startFade,endFade,100,0,MapType.QUADRATIC,MapEase.EASE_IN_OUT));
                 else
                     whiteText.setAlpha(100);
                 p.fill(whiteText);
-                p.text(df.format(Math.abs(txt)), displacement.x + 130 - WIDTH / 2f, yCoord); // account for everything !
+
+                var txt = showText(num);
+                int sze = 60;
+                switch (txt.length()){
+                    case 1-> sze = 70;
+                    case 2-> sze = 62;
+                    case 3-> sze = 56;
+                    case 4-> sze = 48;
+                }
+                p.textSize(sze);
+                p.text(txt, displacement.x + 130 - WIDTH / 2f, yCoord); // account for everything !
 
             }
+             p.textSize(60);
         }
 
         // x value rectangle
@@ -229,11 +264,12 @@ public class DataGrid {
         p.stroke(ColorType.RED);
         // increment end because text needs to show up before line (super efficient line)
         ender = (end.x-begin.x)/incrementor.x;
+
         for (int i = 0; i < ender; i++){
             float x = begin.x + i*incrementor.x;
-            double txt = textify(x,X);
-            if (txt == 0)
-                continue;
+           // double txt = showTextEpoch(x);
+            //if (txt == 0) // this might still be aesthetically pleasing
+              //  continue;
 
             if (x-displacement.x < 333-WIDTH/2f && startMoving.x) // cant hurt now can it?
                 if (x-displacement.x < 90-WIDTH/2f)
@@ -245,7 +281,8 @@ public class DataGrid {
 
             if (Math.abs(Math.IEEEremainder(x-startingBegin.x, 2*incrementor.x)) < EPSILON)
                 // -600 is the original begin.x
-                p.text(df.format(txt),x,displacement.y + HEIGHT/2f - 95); // account for everything !
+                // 161-WIDTH/2f + scale.x * (float) (xValues[i] - xOffset) = x, solve for xValues[i]
+                p.text(showTextEpoch((x - 161 + WIDTH/2f)/scale.x + xOffset),x,displacement.y + HEIGHT/2f - 95); // account for everything !
         }
     }
 
@@ -257,11 +294,33 @@ public class DataGrid {
         return this.color;
     }
 
-    public double textify(float r, int XorY){
-        if (XorY == X)
-            return 1/scale.x * (r-startingBegin.x); // begin.x ORIGINAL
+    public double textify(float r){ // textifY
+            //return 1/scale.x * (r-startingBegin.x); // begin.x ORIGINAL
         return -1/scale.y * 200/incrementor.y * (r-startingBegin.y); // begin.y ORIGINAL
     }
+
+    Calendar cal = Calendar.getInstance();
+    String showTextEpoch(double a){
+        cal.setTime(new Timestamp((long) a));
+        LocalDate date2 = Instant.ofEpochMilli((long) a * 1000).atZone(ZoneId.systemDefault()).toLocalDate();
+        String strMonth2 = date2.getMonth().toString().substring(0,3);
+        return "" + strMonth2.charAt(0) + strMonth2.substring(1,3).toLowerCase() + " " + date2.getDayOfMonth() + ", " + date2.getYear();
+    }
+
+    String showText(double a){
+        if (Math.round(a) >= 1000000){
+            String s = df.format(a/1000000);
+            return !s.contains(".") ? s : s.replaceAll("0*$", "").replaceAll("\\.$", "") + "M";
+        }
+
+        if (Math.round(a) >= 1000){
+            String s = df.format(a/1000);
+            return !s.contains(".") ? s : s.replaceAll("0*$", "").replaceAll("\\.$", "") + "K";
+        }
+        String s = Long.toString(Math.round(a));
+        return !s.contains(".") ? s : s.replaceAll("0*$", "").replaceAll("\\.$", "");
+    }
+
 
     public boolean draw(){
         init();
@@ -276,5 +335,14 @@ public class DataGrid {
        // processing.image(p,-WIDTH/2f,-HEIGHT/2f);
         drawMainAxes();
         return b;
+    }
+
+    double xOffset = 0;
+    public void setXOffset(double offset) {
+        xOffset = offset;
+    }
+
+    public double getXOffset() {
+        return xOffset;
     }
 }

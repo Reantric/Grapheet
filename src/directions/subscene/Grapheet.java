@@ -5,11 +5,12 @@ import directions.Scene;
 import geom.DataGrid;
 import storage.Color;
 import storage.ColorType;
-import storage.dataviz.DataGraph;
 import storage.Vector;
+import storage.dataviz.DataGraph;
 
-import javax.xml.crypto.Data;
 import java.util.Arrays;
+import static util.Useful.ceilAny;
+import static util.Useful.floorAny;
 
 import static geom.DataGrid.HEIGHT;
 import static geom.DataGrid.WIDTH;
@@ -19,6 +20,7 @@ public class Grapheet extends Scene {
     public DataGraph[] dataGraphs;
     public Color[] colorWheel;
     public Vector minMaxGraph = new Vector(Float.MAX_VALUE,Float.MIN_VALUE);
+    public double midline;
 
     public Grapheet(Applet window) {
         super(window);
@@ -49,9 +51,15 @@ public class Grapheet extends Scene {
         }
 
         DataGraph.setXValues(xValues);
+        double maxY = 0;
         for (int i = 0; i < yValLen; i++){
             dataGraphs[i] = new DataGraph(plane,yValues[i], colorWheel[i % colorWheel.length],"John");
+            maxY = Math.max(maxY,yValues[i][0]);
         }
+
+        plane.setXOffset(DataGraph.xValues[0]);
+        plane.getScale().x = (float) (dataLen/(DataGraph.xValues[dataLen-1] - DataGraph.xValues[0]));
+        plane.getScale().y = (float) Math.pow(10,Math.floor(Math.log10(800.0/(0.1 + maxY)))); //(float) floorAny(800.0/maxY,100);
         //System.out.println(Arrays.deepToString(yValues));
     }
 
@@ -72,11 +80,14 @@ public class Grapheet extends Scene {
         if (DataGraph.xDistanceFromOrigin > WIDTH/2-300+plane.getDisplacement().x)
             plane.getCamera().x += DataGraph.moveX;
 
+        if (minMaxGraph.y < plane.getDisplacement().y - HEIGHT/2){ // make sure this works!
+            plane.getCamera().y -= 400;
+        }
+
         if (minMaxGraph.x < plane.getDisplacement().y - HEIGHT/2 + 40){ // cuz neg vals are how high u are
             plane.getIncrementor().y = 200*(400 - plane.getDisplacement().y + HEIGHT/2 - 40)/(200*(400-minMaxGraph.x)/plane.getIncrementor().y);
             // ^ --> 400 - scale.y * inc.y / 200 * pointVal[index]
         }
-
 
         return false; //step[1];
     }
@@ -85,9 +96,11 @@ public class Grapheet extends Scene {
         minMaxGraph = new Vector(Float.MAX_VALUE,Float.MIN_VALUE);
         for (DataGraph g: dataGraphs){
             g.draw();
-            minMaxGraph.y = (float) Math.max(minMaxGraph.y,g.evaluate());
-            minMaxGraph.x = (float) Math.min(minMaxGraph.x,g.evaluate());
+            var eval = g.evaluate();
+            minMaxGraph.y = (float) Math.max(minMaxGraph.y,eval);
+            minMaxGraph.x = (float) Math.min(minMaxGraph.x,eval);
         }
+        midline = (minMaxGraph.x + minMaxGraph.y)/2;
         DataGraph.update();
         return DataGraph.index >= DataGraph.xValues.length-1;
     }
