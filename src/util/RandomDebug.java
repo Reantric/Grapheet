@@ -1,5 +1,4 @@
-package vanim.util;
-
+package util;
 import java.util.Random;
 
 public class RandomDebug {

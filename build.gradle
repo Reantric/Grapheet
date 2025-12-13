@@ -9,6 +9,14 @@ version '1.0-SNAPSHOT'
 
 repositories {
     mavenCentral()
+    // Required for JOGL/GlueGen 2.5.x used by Processing 4.x
+    maven { url 'https://jogamp.org/deployment/maven' }
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
 }
 sourceSets {
     main {
@@ -20,10 +28,7 @@ sourceSets {
 dependencies {
 
     // Processing (Maven Central)
-    implementation 'org.processing:core:3.3.7'
-    // Needed for P2D/P3D renderers
-    implementation 'org.jogamp.jogl:jogl-all-main:2.3.2'
-    implementation 'org.jogamp.gluegen:gluegen-rt-main:2.3.2'
+    implementation 'org.processing:core:4.4.10'
 
     // VideoExport (local jars under library/VideoExport)
     implementation fileTree(dir: 'library/VideoExport', include: ['*.jar'])
@@ -69,6 +74,12 @@ tasks.register("runSmiley", JavaExec) {
 
 tasks.named("run", JavaExec).configure {
     systemProperty("recordVideo", System.getProperty("recordVideo", "false"))
+}
+
+tasks.withType(JavaExec).configureEach {
+    javaLauncher.set(javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(25)
+    })
 }
 
 task createPom {
