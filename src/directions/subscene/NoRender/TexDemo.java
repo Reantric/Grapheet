@@ -43,7 +43,7 @@ public class TexDemo extends Scene {
         step[0] = tex.draw();
         copyTex.draw();
         if (step[0]) {
-            copyTex.getPos().interpolate(PVector.add(UP,LEFT));
+            copyTex.getPos().interpolate(Vector.add(UP,LEFT));
         }
             //step[1] = copyTex
         return false;

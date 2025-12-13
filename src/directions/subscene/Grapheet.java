@@ -3,6 +3,7 @@ package directions.subscene;
 import core.Applet;
 import directions.Scene;
 import geom.DataGrid;
+import processing.core.PApplet;
 import storage.Color;
 import storage.ColorType;
 import storage.Vector;
@@ -57,9 +58,9 @@ public class Grapheet extends Scene {
             maxY = Math.max(maxY,yValues[i][0]);
         }
 
-        plane.setXOffset(DataGraph.xValues[0]);
-        plane.getScale().x = (float) (dataLen/(DataGraph.xValues[dataLen-1] - DataGraph.xValues[0]));
-        plane.getScale().y = (float) Math.pow(10,Math.floor(Math.log10(800.0/(0.1 + maxY)))); //(float) floorAny(800.0/maxY,100);
+        plane.setXOffset(DataGraph.xValues[0]/2);
+        plane.getScale().setX((float) (dataLen/(DataGraph.xValues[dataLen-1] - DataGraph.xValues[0])));
+        plane.getScale().setY((float) Math.pow(10,Math.floor(Math.log10(800.0/(0.1 + maxY))))); //(float) floorAny(800.0/maxY,100);
         //System.out.println(Arrays.deepToString(yValues));
     }
 
@@ -70,11 +71,14 @@ public class Grapheet extends Scene {
         plane.drawMainAxes();
         plane.label();
         if (step[0]) {
-           // step[1] = plane.getCamera().interpolate(new Vector(300, -415), 2.5);
-            step[1] = this.graph();
+            PApplet.println(plane.getCamera());
+            plane.getCamera().interpolate(new Vector(5000,-1500),15);
+            //plane.getScale().interpolate(new Vector(plane.getScale().x,200));
+          //  step[1] = plane.getCamera().interpolate(new Vector(300, -415), 2.5);
+       //    step[1] = this.graph();
            // step[1] = true;
         }
-        if (step[1]) {
+      /*  if (step[1]) {
             //plane.getIncrementor().interpolate(new Vector(250,75),8);
         }
         if (DataGraph.xDistanceFromOrigin > WIDTH/2-300+plane.getDisplacement().x)
@@ -88,7 +92,7 @@ public class Grapheet extends Scene {
             plane.getIncrementor().y = 200*(400 - plane.getDisplacement().y + HEIGHT/2 - 40)/(200*(400-minMaxGraph.x)/plane.getIncrementor().y);
             // ^ --> 400 - scale.y * inc.y / 200 * pointVal[index]
         }
-
+            */
         return false; //step[1];
     }
 

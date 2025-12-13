@@ -4,10 +4,7 @@ import core.Applet;
 import geom.DataGrid;
 import processing.core.PFont;
 import processing.core.PShape;
-import storage.Color;
-import storage.ColorType;
-import storage.TruthVector;
-import storage.Vector;
+import storage.*;
 import util.Mapper;
 import util.map.MapEase;
 import util.map.MapType;
@@ -63,7 +60,7 @@ public class DataGraph {
 
     public static void setXValues(double[] xVals) {
         DataGraph.xValues = xVals;
-        moveX = xValues.length/2000f;
+        moveX = xValues.length/5000f;
     }
 
     public void draw(){
@@ -88,7 +85,7 @@ public class DataGraph {
     private PShape createGraphShape(){
         Applet p = dataGrid.getProcessingInstance();
         Vector incrementor = dataGrid.getIncrementor();
-        Vector scale = dataGrid.getScale();
+        PreciseVector scale = dataGrid.getScale();
         PShape shape = p.createShape();
         shape.colorMode(HSB);
         shape.beginShape(LINES);
@@ -102,8 +99,8 @@ public class DataGraph {
         double index = (620+ dataGrid.getDisplacement().x) * 1/scale.x * 1/distance;
         System.out.println(index);
         for (int i = 1; i < index; i++){
-            shape.vertex(165-WIDTH/2f + scale.x * (float) xValues[i-1],400-scale.y * (float) pointValues[i-1]);
-            shape.vertex(165-WIDTH/2f + scale.x * (float) xValues[i],400-scale.y * (float) pointValues[i]);
+            shape.vertex((float) (165-WIDTH/2f + scale.x * (float) xValues[i-1]), (float) (400-scale.y * (float) pointValues[i-1]));
+            shape.vertex((float) (165-WIDTH/2f + scale.x * (float) xValues[i]), (float) (400-scale.y * (float) pointValues[i]));
         }
         shape.endShape();
         return shape;
@@ -116,7 +113,7 @@ public class DataGraph {
         Applet p = dataGrid.getProcessingInstance();
         p.strokeWeight(5.5f);
         p.stroke(color);
-        Vector scale = dataGrid.getScale();
+        PreciseVector scale = dataGrid.getScale();
         Vector inc = dataGrid.getIncrementor();
         TruthVector moving = dataGrid.getMoving();
         if (incrementor < xValues.length) // start moving once this is no longer true?
@@ -129,23 +126,27 @@ public class DataGraph {
 
         double offset = dataGrid.getXOffset();
         for (int i = firstInd; i < index; i++){
-            p.line(161-WIDTH/2f + scale.x * (float) (xValues[i-1] - offset),400-scale.y * inc.y / 200 * (float) pointValues[i-1],161-WIDTH/2f + scale.x * (float) (xValues[i] - offset),400-scale.y * inc.y/200 * (float) pointValues[i]);
+            p.line((float) (161-WIDTH/2f + scale.x * (float) (xValues[i-1] - offset)), (float) (400-scale.y * inc.y / 200 * (float) pointValues[i-1]), (float) (161-WIDTH/2f + scale.x * (float) (xValues[i] - offset)), (float) (400-scale.y * inc.y/200 * (float) pointValues[i]));
         }
-        p.fill(ColorType.WHITE);
-        p.noStroke();
-        p.circle(161-WIDTH/2f + scale.x * (float) xValues[Math.max(0,(int) index-1)],400-scale.y * inc.y/200 * (float) pointValues[Math.max(0,(int) index-1)],20);
         info();
     }
 
     public void info(){
         // ok lets go
         Applet p = dataGrid.getProcessingInstance();
-        Vector scale = dataGrid.getScale();
+        PreciseVector scale = dataGrid.getScale();
         Vector inc = dataGrid.getIncrementor();
+        int n = xValues.length-1; // a little off...?
+
+        p.fill(ColorType.WHITE);
+        p.noStroke();
+        p.circle((float) (161-WIDTH/2f + scale.x * (float) xValues[Math.min(n,(int) index)]), (float) (400-scale.y * inc.y/200 * (float) pointValues[Math.min(n,(int) index)]),20);
+
         p.fill(color);
         p.textFont(dataGrid.getNameFont());
         p.textSize(50);
-        p.text(name,90+161-WIDTH/2f + scale.x * (float) xValues[Math.max(0,(int) index-1)],-20 + 400-scale.y * inc.y/200 * (float) pointValues[Math.max(0,(int) index-1)]);
+
+        p.text(name, (float) (90+161-WIDTH/2f + scale.x * (float) xValues[Math.min(n,(int) index)]), (float) (-20 + 400-scale.y * inc.y/200 * (float) pointValues[Math.min(n,(int) index)]));
     }
 
 

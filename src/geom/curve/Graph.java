@@ -14,7 +14,7 @@ import java.util.function.Function;
 import static geom.DataGrid.WIDTH;
 import static processing.core.PConstants.EPSILON;
 
-public class Graph implements Interpolatable<Function<Double,Double>> { // 2D graph, fuck 3D, maybe change Interp<Func> to Interp<Graph>?
+public class Graph implements Interpolatable<Function<Double,Double>> { // 2D graph, forget 3D, maybe change Interp<Func> to Interp<Graph>?
     Color color = new Color(ColorType.GREEN);
     float[] xValues;
     float[] yValues;
@@ -74,10 +74,10 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
         if (f.equals(g)){
             return true;
         }
-        float recipScaleY = 1/plane.getScale().y;
-        float recipScaleX = 1/plane.getScale().x;
+        double recipScaleY = 1/plane.getScale().y;
+        double recipScaleX = 1/plane.getScale().x;
         for (int i = 0; i < yValues.length; i++){
-            yValues[i] = (1-incrementor.x) * ((float) (recipScaleY * f.apply((double) (xValues[i]/recipScaleX)))) + incrementor.x * ((float) (recipScaleY * g.apply((double) (xValues[i]/recipScaleX))));
+            yValues[i] = (float) ((1-incrementor.x) * ((float) (recipScaleY * f.apply((double) (xValues[i]/recipScaleX)))) + incrementor.x * ((float) (recipScaleY * g.apply((double) (xValues[i]/recipScaleX)))));
         }
         if (incrementor.interpolate(new Vector(1), type,ease,time)) {
             this.f = g;

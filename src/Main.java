@@ -1,4 +1,3 @@
-import videoExport.*;
 import core.Applet;
 import directions.Directions;
 import processing.core.PApplet;
@@ -6,6 +5,8 @@ import processing.core.PFont;
 import processing.event.MouseEvent;
 
 import java.lang.reflect.InvocationTargetException;
+
+import com.hamoid.VideoExport;
 
 import static geom.DataGrid.*;
 public class Main extends Applet {
@@ -22,9 +23,9 @@ public class Main extends Applet {
         videoExport.setFfmpegPath("library/ffmpeg");
         videoExport.setQuality(85,0);
         videoExport.setFrameRate(60);
-        frameRate(60);
+        frameRate(25);
         //surface.setVisible(false);
-        videoExport.startMovie();
+      //  videoExport.startMovie();
     }
 
 

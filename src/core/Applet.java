@@ -1,6 +1,7 @@
 package core;
 
 import processing.core.PApplet;
+import processing.core.PGraphics;
 import processing.core.PShape;
 import processing.core.PVector;
 import storage.Color;
@@ -34,6 +35,10 @@ public class Applet extends PApplet {
         this.translate(mult.x,mult.y);
     }
 
+    public void translate(Vector mult) {
+        this.translate((float) mult.x,(float) mult.y);
+    }
+
     public void fill(ColorType c) {
         this.fill(new Color(c));
     }
@@ -43,15 +48,31 @@ public class Applet extends PApplet {
     }
 
     public void shape(PShape latex, Vector pos) {
-        this.shape(latex,pos.x,pos.y);
+        this.shape(latex, (float) pos.x, (float) pos.y);
     }
 
     public void rect(Vector pos, Vector pos1) {
-        this.rect(pos.x,pos.y,pos1.x,pos1.y);
+        this.rect((float) pos.x, (float) pos.y, (float) pos1.x, (float) pos1.y);
     }
 
     public void scale(Vector scale){
-        this.scale(scale.x,scale.y);
+        this.scale((float) scale.x, (float) scale.y);
+    }
+
+    public static final double linMap(double value, double start1, double stop1, double start2, double stop2) {
+        double outgoing = start2 + (stop2 - start2) * ((value - start1) / (stop1 - start1));
+        String badness = null;
+        if (outgoing != outgoing) {
+            badness = "NaN (not a number)";
+        } else if (outgoing == Float.NEGATIVE_INFINITY || outgoing == Float.POSITIVE_INFINITY) {
+            badness = "infinity";
+        }
+
+        if (badness != null) {
+            PGraphics.showWarning("fuc");
+        }
+
+        return outgoing;
     }
 
     /*public Shape createShape() {

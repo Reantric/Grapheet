@@ -2,12 +2,10 @@ package geom;
 
 
 import core.Applet;
+import org.apache.fop.render.intermediate.extensions.Link;
 import processing.core.PFont;
 import processing.core.PVector;
-import storage.Color;
-import storage.ColorType;
-import storage.TruthVector;
-import storage.Vector;
+import storage.*;
 import util.Mapper;
 import util.map.MapEase;
 import util.map.MapType;
@@ -19,6 +17,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.LinkedList;
 import java.util.List;
 
 import static processing.core.PConstants.*;
@@ -28,7 +27,7 @@ import static util.Useful.floorAny;
 public class DataGrid {
     public static final int WIDTH = 1920;
     public static final int HEIGHT = 1080;
-    public int cycle = 0; // 1 -> 2 -> 5 -> 1
+    public int cycle = 1; // 1 -> 2 -> 5 -> 1
     Applet p;
     public boolean fade = false;
     public double fadeIncrementor = 0;
@@ -60,7 +59,7 @@ public class DataGrid {
         return end;
     }
 
-    public Vector getScale() {
+    public PreciseVector getScale() {
         return scale;
     }
 
@@ -74,7 +73,7 @@ public class DataGrid {
     Vector startingBegin = new Vector((float) ceilAny(startingCamera.x - WIDTH/2f,250),(int) floorAny(HEIGHT/2f + startingCamera.y, 200));
     // def incrementor: 200,200 // 203.8 fails
     Vector begin = new Vector(),end = new Vector();
-    Vector scale = new Vector(800,800); // possible dynamic generation of scale?
+    PreciseVector scale = new PreciseVector(800,800); // possible dynamic generation of scale?
     PVector displacement = new Vector(0,0);
     TruthVector startMoving = new TruthVector();
     Color color;
@@ -87,6 +86,24 @@ public class DataGrid {
     }
 
     public PFont nameFont;
+
+    public LocalDate endVertDate;
+
+    int futureSight = 9;
+    private void initDates(){
+        endVertDate = Instant.ofEpochMilli(((long) 0) * 1000).atZone(ZoneId.systemDefault()).toLocalDate(); // Create a unix time object! (.withDayOfMonth(1))
+        // stop();
+        int ender = 8;
+        for (int m = 0; m < ender; m++){ // safe side
+            //var epochBef = date.plusMonths(m*futureSight).atStartOfDay(ZoneId.systemDefault()).toEpochSecond();
+            var epochAdv = endVertDate.plusMonths((long) (m + 1) *futureSight).atStartOfDay(ZoneId.systemDefault()).toEpochSecond();
+          //  dateBuffer.add(epochAdv - epochBef);
+            dateBuffer.add(epochAdv);
+        }
+        endVertDate = endVertDate.plusMonths((long) ender *futureSight);
+    }
+
+    LinkedList<Long> dateBuffer = new LinkedList<>();
     public DataGrid(Applet p){
         this.p = p;
         String commonPath = "src/data/";
@@ -94,6 +111,7 @@ public class DataGrid {
         color = new Color(0,0,65);
         italics = p.createFont(commonPath + "cmunbmo.ttf", 150, true);
         nameFont = p.createFont("Lato Bold",150,true);
+        initDates();
         // Empty for now because nothing much really happens
     }
 
@@ -117,9 +135,8 @@ public class DataGrid {
         startMoving.y = camera.y < 170-200; // suppose camera goes up and down?
 
         displacement = PVector.sub(camera,startingCamera);
-        fade = incrementor.y < startFade;
+      /*  fade = incrementor.y < startFade;
         endFade = cycle != 2 ? 100 : 80;
-       // fadeIncrementor += fade ? 0.1 : 0;
 
         if (cycle != 2 && incrementor.y <= 100 + EPSILON){ // this is /2, only happen if we are at 1 or 5
             incrementor.y = 200;
@@ -135,7 +152,7 @@ public class DataGrid {
             fadeIncrementor = 0;
             fade = false;
             cycle = 5;
-        }
+        } */
     }
 
     private void generate(){
@@ -146,9 +163,15 @@ public class DataGrid {
         begin.x = (float) ceilAny(displacement.x - WIDTH/2f,250);
         end.x = (float) ceilAny(camera.x + WIDTH/2f + 250,250);
 
-        float ender = (end.x-begin.x)/incrementor.x;
-        for (int i = 0; i < ender; i++){ // draws vert lines
-            float x = begin.x + i*incrementor.x;
+        if (startingBegin.x + scale.x*dateBuffer.getFirst() < displacement.x - WIDTH/2) {
+            dateBuffer.remove(0);
+            endVertDate = endVertDate.plusMonths(futureSight);
+            dateBuffer.addLast(endVertDate.atStartOfDay(ZoneId.systemDefault()).toEpochSecond());
+        }
+
+        System.out.println(dateBuffer);
+        for (var dL: dateBuffer){ // draws vert lines
+            double x = startingBegin.x + scale.x*dL;
             if (x-displacement.x < 333-WIDTH/2f && startMoving.x)
                 color.setAlpha((float) Mapper.map2(x-displacement.x,90-WIDTH/2f, 333-WIDTH/2f,0,100, MapType.QUADRATIC, MapEase.EASE_IN_OUT));
             else
@@ -156,22 +179,27 @@ public class DataGrid {
 
             p.stroke(color);
 
-            if (Math.abs(Math.IEEEremainder(x-startingBegin.x, 2*incrementor.x)) < EPSILON)
+           /* if (Math.abs(Math.IEEEremainder(x-startingBegin.x, 2*incrementor.x)) < EPSILON)
                 p.strokeWeight(largeStroke);
             else
-                p.strokeWeight(smallStroke);
+                p.strokeWeight(smallStroke); */
 
             if (startMoving.y){
-                p.line(x,camera.y+spacing.y,x,camera.y-spacing.y);
+                p.line((float) x,camera.y+spacing.y, (float) x,camera.y-spacing.y);
             } else {
-                p.line(x,-spacing.y,x,Math.min(400,spacing.y));
+                p.line((float) x,-spacing.y, (float) x,Math.min(400,spacing.y));
             }
         }
+
+        // 161-WIDTH/2f + scale.x * (float) (xValues[i] - xOffset) = x, plug in good values of xValues[i]...
+        p.stroke(ColorType.CYAN);
+        p.line((float) (161-WIDTH/2f + scale.x * (float) (63093661 - xOffset)), (float) -1000, (float) (161-WIDTH/2f + scale.x * (float) (63093661 - xOffset)),1000);
+        // potentially new vert line generation code down below... ignore top!
 
         begin.y = (float) floorAny(HEIGHT/2f - 15, 200); // this isn't good but it works for now
         end.y = (float) floorAny(-HEIGHT/2f + camera.y, incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
 
-        ender = (begin.y-end.y)/incrementor.y;
+        float ender = (begin.y-end.y)/incrementor.y;
         for (int j = 0; j <= ender; j++){  // draws horiz lines, processing draws y up to down cuz flipped (so invert the bounds)
             float y = begin.y - j*incrementor.y;
             if (Math.abs(Math.IEEEremainder(y-startingBegin.y, 2*incrementor.y)) < EPSILON) {
@@ -180,8 +208,6 @@ public class DataGrid {
             }
             else {
                 p.strokeWeight(smallStroke);
-                if (fade)
-                    color.setAlpha((float) Mapper.map2(incrementor.y-fadeIncrementor,startFade,endFade,100,0,MapType.QUADRATIC,MapEase.EASE_IN_OUT));
             }
 
 
@@ -228,15 +254,13 @@ public class DataGrid {
                 // -600 is the original begin.y <--- dont trust anything idk
                 double num = textify(y);
                 float yCoord;
-                if (y == begin.y) // hmm?
-                    yCoord = y - 20;
+                if (y == begin.y)
+                    yCoord = y - 24;
                 else
                     yCoord = y - 2;
 
-                if (j % 4 == 2 && fade)
-                    whiteText.setAlpha((float) Mapper.map2(incrementor.y-fadeIncrementor,startFade,endFade,100,0,MapType.QUADRATIC,MapEase.EASE_IN_OUT));
-                else
-                    whiteText.setAlpha(100);
+
+                whiteText.setAlpha(100);
                 p.fill(whiteText);
 
                 var txt = showText(num);
@@ -265,11 +289,8 @@ public class DataGrid {
         // increment end because text needs to show up before line (super efficient line)
         ender = (end.x-begin.x)/incrementor.x;
 
-        for (int i = 0; i < ender; i++){
-            float x = begin.x + i*incrementor.x;
-           // double txt = showTextEpoch(x);
-            //if (txt == 0) // this might still be aesthetically pleasing
-              //  continue;
+        for (var dL: dateBuffer){
+            double x = startingBegin.x + scale.x*dL;
 
             if (x-displacement.x < 333-WIDTH/2f && startMoving.x) // cant hurt now can it?
                 if (x-displacement.x < 90-WIDTH/2f)
@@ -279,10 +300,10 @@ public class DataGrid {
             else
                 p.fill(ColorType.WHITE);
 
-            if (Math.abs(Math.IEEEremainder(x-startingBegin.x, 2*incrementor.x)) < EPSILON)
+         //   if (Math.abs(Math.IEEEremainder(x-startingBegin.x, 2*incrementor.x)) < EPSILON)
                 // -600 is the original begin.x
                 // 161-WIDTH/2f + scale.x * (float) (xValues[i] - xOffset) = x, solve for xValues[i]
-                p.text(showTextEpoch((x - 161 + WIDTH/2f)/scale.x + xOffset),x,displacement.y + HEIGHT/2f - 95); // account for everything !
+                p.text(showTextEpoch(dL), (float) x,displacement.y + HEIGHT/2f - 95); // account for everything !
         }
     }
 
@@ -308,7 +329,9 @@ public class DataGrid {
     }
 
     String showText(double a){
-        if (Math.round(a) >= 1000000){
+        return Double.toString(a);
+
+/*        if (Math.round(a) >= 1000000){
             String s = df.format(a/1000000);
             return !s.contains(".") ? s : s.replaceAll("0*$", "").replaceAll("\\.$", "") + "M";
         }
@@ -318,7 +341,7 @@ public class DataGrid {
             return !s.contains(".") ? s : s.replaceAll("0*$", "").replaceAll("\\.$", "") + "K";
         }
         String s = Long.toString(Math.round(a));
-        return !s.contains(".") ? s : s.replaceAll("0*$", "").replaceAll("\\.$", "");
+        return !s.contains(".") ? s : s.replaceAll("0*$", "").replaceAll("\\.$", ""); */
     }
 
 

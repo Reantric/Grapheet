@@ -23,6 +23,16 @@ public class Vector extends PVector implements Interpolatable<PVector> { // only
         uneasedY = this.y;
     }
 
+    public void setX(float x){ // abrupt change
+        this.x = x;
+        uneasedX = x;
+    }
+
+    public void setY(float y){ // abrupt change
+        this.y = y;
+        uneasedY = y;
+    }
+
     public Vector(float x) {
         this(x,0);
     }

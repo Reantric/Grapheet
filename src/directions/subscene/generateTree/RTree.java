@@ -147,10 +147,10 @@ public class RTree {
                     Vector parentPos = n.getParent().getPos();
                     PShape lines;
                     float angle = PApplet.radians(36);
-                    float x = parentPos.x + RTreeNode.radius * PApplet.sin(angle) * (2 * n.getChildNumber() - 1);
-                    float y = parentPos.y + RTreeNode.radius * PApplet.cos(angle);
+                    double x = parentPos.x + RTreeNode.radius * PApplet.sin(angle) * (2 * n.getChildNumber() - 1);
+                    double y = parentPos.y + RTreeNode.radius * PApplet.cos(angle);
 
-                    lines = p.createShape(LINE, x, y, c * n.pos.x + (1 - c) * x, c * (n.pos.y - RTreeNode.radius) + (1 - c) * y);
+                    lines = p.createShape(LINE, (float) x, (float) y, (float) (c * n.pos.x + (1 - c) * x), (float) (c * (n.pos.y - RTreeNode.radius) + (1 - c) * y));
                     n.getParent().getNodeShape().addChild(lines);
                 } else
                     n.draw(c, skeleton);

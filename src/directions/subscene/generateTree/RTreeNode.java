@@ -54,7 +54,7 @@ public class RTreeNode {
 
     public void setPos(Vector pos){
         this.pos = pos;
-        latex.setPos(pos.x-24,pos.y-10-20);
+        latex.setPos((float) (pos.x-24), pos.y-10-20);
     }
 
     public void draw(float c, PShape groupShape){ // only place where addChild should occur
@@ -66,13 +66,13 @@ public class RTreeNode {
         PShape text = latex.getShape();
         PShape circShape;
         if (c < 0.99){
-            circShape = p.createShape(ARC,pos.x,pos.y,radius*2,radius*2,-angleToMakeCirc,-p.PI/2); // constructor shit
+            circShape = p.createShape(ARC, (float) pos.x, (float) pos.y,radius*2,radius*2,-angleToMakeCirc,-p.PI/2); // constructor shit
             circShape.setStroke(p.color(color));
             text.setFill(p.color(255,0,255,PApplet.map(angleToMakeCirc,p.PI/2,p.TAU+p.PI/2,0,255)));
         }
         else {
             angleToMakeCirc = p.TAU+p.PI/2;
-            circShape = p.createShape(ELLIPSE,pos.x,pos.y,radius*2,radius*2);
+            circShape = p.createShape(ELLIPSE, (float) pos.x, (float) pos.y,radius*2,radius*2);
             circShape.setStroke(p.color(color));
             text.setFill(p.color(255,0,255));
         }

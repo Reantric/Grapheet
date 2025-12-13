@@ -61,8 +61,8 @@ public class Grid {
         end.x = (float) ceilAny(camera.x + WIDTH/2f,incrementor.x);
         begin.y = (float) floorAny(HEIGHT/2f + camera.y, incrementor.y);
         end.y = (float) floorAny(-HEIGHT/2f + camera.y, incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
-        ender.x = ceilToNearestOdd((end.x-begin.x)/incrementor.x);
-        ender.y =  ceilToNearestOdd((begin.y-end.y)/incrementor.y);
+    //    ender.x = ceilToNearestOdd((end.x-begin.x)/incrementor.x);
+    //    ender.y =  ceilToNearestOdd((begin.y-end.y)/incrementor.y);
     }
 
     public void setScale(Vector scale){
@@ -88,25 +88,25 @@ public class Grid {
         p.stroke(color);
 
         for (int i = 0; i < ender.x; i++){ // draws vert lines
-            float x = begin.x + i*incrementor.x;
+            double x = begin.x + i*incrementor.x;
            // p.println(x-startingBegin.x, 2*incrementor.x);
             if ((ender.x-1)/2 % 2 == (i % 2))
                 p.strokeWeight(largeStroke);
             else
                 p.strokeWeight(smallStroke);
 
-            p.line(x,camera.y+spacing.y,x,camera.y-spacing.y);
+            p.line((float) x, (float) (camera.y+spacing.y), (float) x, (float) (camera.y-spacing.y));
         }
 
 
         for (int j = 0; j < ender.y; j++){  // draws horiz lines, processing draws y up to down cuz flipped (so invert the bounds)
-            float y = begin.y - j*incrementor.y;
+       //     float y = begin.y - j*incrementor.y;
             if ((ender.y-1)/2 % 2  == (j % 2))
                 p.strokeWeight(largeStroke);
             else
                 p.strokeWeight(smallStroke);
 
-            p.line(camera.x - spacing.x,y,camera.x + spacing.x,y);
+       //     p.line(camera.x - spacing.x,y,camera.x + spacing.x,y);
         }
     }
 
@@ -114,8 +114,8 @@ public class Grid {
         p.stroke(new Color(ColorType.WHITE)); // optimize in the future
         p.strokeWeight(6);
 
-        p.line(startingCamera.x-spacing.x,startingCamera.y,startingCamera.x+spacing.x,startingCamera.y);
-        p.line(startingCamera.x,startingCamera.y-spacing.y,startingCamera.x,startingCamera.y+spacing.y);
+     //   p.line(startingCamera.x-spacing.x,startingCamera.y,startingCamera.x+spacing.x,startingCamera.y);
+     //   p.line(startingCamera.x,startingCamera.y-spacing.y,startingCamera.x,startingCamera.y+spacing.y);
     }
 
     Color darkGrey = new Color(0,0,0,60);
@@ -124,15 +124,15 @@ public class Grid {
         p.textAlign(RIGHT,CENTER);
         p.fill(textColor);
         for (int j = 0; j < ender.y; j++){
-            float y = begin.y - j*incrementor.y;
+            double y = begin.y - j*incrementor.y;
             if ((ender.y-1)/2 % 2 == (j % 2)) {
                 // -600 is the original begin.y <--- dont trust anything idk
-                float txt = textify(y,Y);
+               // float txt = textify(y,Y);
                // p.println(txt);
-                float yCoord;
+                double yCoord;
                 yCoord = y - 40;
 
-                p.text(df.format(txt), displacement.x - 6, yCoord); // account for everything !
+         //       p.text(df.format(txt), displacement.x - 6, yCoord); // account for everything !
 
             }
         }
@@ -141,8 +141,8 @@ public class Grid {
         p.noStroke();
         // increment end because text needs to show up before line (super efficient line)
         for (int i = 0; i < ender.x; i++){
-            float x = begin.x + i*incrementor.x;
-            float txt = textify(x,X);
+            double x = begin.x + i*incrementor.x;
+            double txt = textify((float) x,X);
             // p.println(txt);
             if (txt == 0)
                 continue;
@@ -152,14 +152,14 @@ public class Grid {
                  String formattedNumber = df.format(txt);
                  float tWidth = p.textWidth(formattedNumber);
                  p.fill(darkGrey);
-                 p.rect(x - tWidth / 2, displacement.y + 10, x + tWidth / 2, displacement.y + 64);
+                 // p.rect(x - tWidth / 2, displacement.y + 10, x + tWidth / 2, displacement.y + 64);
                  p.fill(textColor);
-                 p.text(formattedNumber, x, displacement.y + 30); // account for everything !
+                // p.text(formattedNumber, x, displacement.y + 30); // account for everything !
             }
         }
     }
 
-    private float textify(float r, int XorY){
+    private double textify(float r, int XorY){
         if (XorY == X)
             return scale.x * r; // begin.x ORIGINAL
         if (r == 0)
@@ -169,7 +169,7 @@ public class Grid {
 
 
     public boolean draw(){
-        p.translate(PVector.mult(camera,-1));
+        p.translate(Vector.mult(camera,-1));
         update();
         generate();
         drawMainAxes();

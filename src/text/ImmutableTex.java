@@ -166,11 +166,11 @@ public class ImmutableTex {
         p.noStroke();
 
 
-        float width = PApplet.map(tex.get(endingInd).getPos().x,bbox.getBoundingWidth(0).y,bbox.getBoundingWidth(tex.size()-1).y,0,latex.getWidth());
-        float heightDown  = PApplet.map(tex.get(endingInd).getPos().y,0,bbox.getBoundingHeight(tex.size()-1).y,0,latex.getHeight()); // idk why i gotta do this but TODO fix
-        float heightUp  = PApplet.map(tex.get(endingInd).getPos().x,0,bbox.getBoundingHeight(tex.size()-1).y,0,latex.getHeight());
+        float width = PApplet.map((float) tex.get(endingInd).getPos().x, (float) bbox.getBoundingWidth(0).y, (float) bbox.getBoundingWidth(tex.size()-1).y,0,latex.getWidth());
+        float heightDown  = PApplet.map((float) tex.get(endingInd).getPos().y, (float) 0, (float) bbox.getBoundingHeight(tex.size()-1).y,0,latex.getHeight()); // idk why i gotta do this but TODO fix
+        float heightUp  = PApplet.map((float) tex.get(endingInd).getPos().x, (float) 0, (float) bbox.getBoundingHeight(tex.size()-1).y,0,latex.getHeight());
         //p.println(latex.getWidth(),latex.getHeight(), width,height);
-        p.rect(x,y+heightUp,x+width*scale.x + 25,y+heightDown*scale.y + 25); // leftmost corner, ??
+        p.rect(x,y+heightUp, (float) (x+width*scale.x + 25), (float) (y+heightDown*scale.y + 25)); // leftmost corner, ??
         //p.rect(x - dim.x/2, y+height + 5,x + width + 20, y+dim.y/2 + 15); // justified left bottom, fix later if need be (god this is pain)
     }
 
@@ -182,7 +182,7 @@ public class ImmutableTex {
         for (ShapeWrapper s: tex) {
             Vector scale = s.getScale();
             p.fill(s.getColor());
-            p.shape(s.getShape(),pos.x,pos.y,s.getShape().getWidth()*scale.x,s.getShape().getHeight()*scale.y);
+            p.shape(s.getShape(), (float) pos.x, (float) pos.y, (float) (s.getShape().getWidth()*scale.x), (float) (s.getShape().getHeight()*scale.y));
         }
         return color.getAlpha().interpolate(100);
     }
