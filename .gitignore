@@ -8,3 +8,6 @@ ffmpeg.txt
 # Ignore Gradle build output directory
 build
 .gitattributes
+
+# Ignore JVM crash logs that can capture local usernames and paths.
+hs_err_pid*.log
