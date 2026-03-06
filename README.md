@@ -39,11 +39,11 @@ Processing smoke test:
 Scene override example:
 
 ```sh
-./gradlew -Dscene=ModernTexScene runWindowed
+./gradlew -Dscene=TexScene runWindowed
 ```
 
 Video export example:
 
 ```sh
-./gradlew -DrecordVideo=true -DffmpegPath=/path/to/ffmpeg runWindowed
+./gradlew -DrecordVideo=true runWindowed
 ```
