@@ -1,4 +1,4 @@
-package directions.modern.scenes;
+package directions.scenes;
 
 import core.Applet;
 import core.ShapeWrapper;
@@ -27,7 +27,7 @@ import java.util.List;
 import static geom.Grid.HEIGHT;
 import static geom.Grid.WIDTH;
 
-public final class ModernTaylorsScene extends Scene {
+public final class TaylorsScene extends Scene {
     private static final Easing STANDARD_EASING = Easings.from(MapType.QUADRATIC, MapEase.EASE_IN_OUT);
 
     private final UnivariateDifferentiableFunction function = new Sin();
@@ -39,7 +39,7 @@ public final class ModernTaylorsScene extends Scene {
     private ImmutableTex sinText;
     private ImmutableTex taylorText;
 
-    public ModernTaylorsScene(Applet applet) {
+    public TaylorsScene(Applet applet) {
         super(applet);
         for (int i = 0; i < 5; i++) {
             taylorValues.add(function.value(new DerivativeStructure(1, 2 * i + 1, 0, 0)));

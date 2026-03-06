@@ -6,5 +6,5 @@
 
 ## Working Rules
 - Preserve user changes already in the worktree unless the user explicitly asks to revert them.
-- Prefer extending the modern scene engine under `src/directions/engine/` and `src/directions/modern/` instead of adding new legacy `step[]`-driven scenes.
+- Prefer extending the scene engine under `src/directions/engine/` and `src/directions/scenes/` instead of adding new legacy `step[]`-driven scenes.
 - If `notes.md` is stale after meaningful work, update it before finishing the task.

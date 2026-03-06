@@ -1,4 +1,4 @@
-package directions.modern.scenes;
+package directions.scenes;
 
 import core.Applet;
 import directions.engine.Action;
@@ -14,7 +14,7 @@ import text.ImmutableTex;
 import util.map.MapEase;
 import util.map.MapType;
 
-public final class ModernTexScene extends Scene {
+public final class TexScene extends Scene {
     private static final String MATRIX_TEX = """
              \\[\\begin{bmatrix}
                                1 & -1 & 0 \\\\
@@ -29,7 +29,7 @@ public final class ModernTexScene extends Scene {
     private final ImmutableTex primary;
     private final ImmutableTex secondary;
 
-    public ModernTexScene(Applet applet) {
+    public TexScene(Applet applet) {
         super(applet);
         primary = new ImmutableTex(applet, MATRIX_TEX, new Color(ColorType.YELLOW));
         secondary = new ImmutableTex(applet, MATRIX_TEX, new Color(ColorType.CYAN));

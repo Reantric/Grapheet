@@ -1,7 +1,7 @@
 import com.hamoid.VideoExport;
 import core.Applet;
+import directions.SceneRegistry;
 import directions.engine.Director;
-import directions.modern.ModernScenes;
 import processing.core.PApplet;
 import processing.core.PFont;
 import processing.event.MouseEvent;
@@ -22,7 +22,7 @@ public class Main extends Applet {
         String commonPath = "src/data/";
         myFont = createFont(commonPath + "cmunbmr.ttf", 150, true);
         italics = createFont(commonPath + "cmunbmo.ttf", 150, true);
-        director = ModernScenes.create(this);
+        director = SceneRegistry.create(this);
 
         recordVideo = Boolean.getBoolean("recordVideo");
         if (recordVideo) {

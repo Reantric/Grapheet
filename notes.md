@@ -5,9 +5,9 @@ This file is the handoff context for future Codex sessions. Read it before start
 
 ## Current Direction
 - The project is being modernized away from the legacy `directions.Scene` + `step[]` flow.
-- The new path lives under `src/directions/engine/` and `src/directions/modern/`.
-- A real legacy scene has been ported to the new engine: `src/directions/modern/scenes/ModernTaylorsScene.java`.
-- `ModernTaylorsScene` no longer uses the old `Actions.legacy(...)` bridge.
+- The new path lives under `src/directions/engine/` and `src/directions/scenes/`.
+- A real legacy scene has been ported to the new engine: `src/directions/scenes/TaylorsScene.java`.
+- `TaylorsScene` no longer uses the old `Actions.legacy(...)` bridge.
 
 ## What Exists Now
 - New engine primitives:
@@ -16,9 +16,10 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `SceneContext`
   - `Action` and composable actions in `Actions`
   - typed tween adapters in `Values`
-- Modern scene registry:
-  - `src/directions/modern/ModernScenes.java`
-- Modern scene selection can be overridden with `-Dscene=...`
+- Scene registry:
+  - `src/directions/SceneRegistry.java`
+- Scene selection can be overridden with `-Dscene=...`
+- Supported scene names are the canonical class names only: `TaylorsScene`, `TexScene`
 
 ## Important Runtime Findings
 - `P2D` / JOGL was not stable in this Linux environment.
@@ -44,24 +45,24 @@ This file is the handoff context for future Codex sessions. Read it before start
 
 ## Architectural Notes
 - `Grid`, `Graph`, and `ImmutableTex` now expose render/update separation, so the new engine can control orchestration cleanly.
-- `ModernTaylorsScene` is now native to the new engine action flow.
-- `Graph` reveal now has a clean update path separate from rendering, so the modern scene no longer double-renders graph segments during reveal.
+- `TaylorsScene` is now native to the new engine action flow.
+- `Graph` reveal now has a clean update path separate from rendering, so the scene no longer double-renders graph segments during reveal.
 - The old legacy runner, old scene tree, and old `DataGraph` / `DataGrid` classes have been removed.
 
 ## Recommended Next Steps
 1. Reduce debug printing left in unrelated utilities, especially SVG code and any remaining exploratory logging.
-2. Build new scenes directly under `src/directions/modern/scenes/`.
-3. Remove more legacy animation state from `Graph`, `Grid`, and related classes where it still leaks into modern usage.
+2. Build new scenes directly under `src/directions/scenes/`.
+3. Remove more legacy animation state from `Graph`, `Grid`, and related classes where it still leaks into scene usage.
 4. Investigate whether `P2D` can be made reliable on Linux, or keep `JAVA2D` as a supported fallback.
 
 ## Working Commands
 - Compile:
   - `./gradlew compileJava`
-- Run modern path with verified settings:
+- Run the current scene path with verified settings:
   - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false`
-- Run a specific modern scene:
-  - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false -Dscene=ModernTaylorsScene`
-  - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false -Dscene=ModernTexScene`
+- Run a specific scene:
+  - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false -Dscene=TaylorsScene`
+  - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false -Dscene=TexScene`
 
 ## Worktree Cautions
 - There are unrelated tracked `.gradle/7.1/*` deletions in the worktree. Do not revert them unless the user asks.
