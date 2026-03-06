@@ -21,9 +21,11 @@ This file is the handoff context for future Codex sessions. Read it before start
 - `Main` can run either:
   - modern path by default
   - legacy path with `-DlegacyDirections=true`
+- Modern scene selection can be overridden with `-Dscene=...`
 
 ## Important Runtime Findings
 - `P2D` / JOGL was not stable in this Linux environment.
+- The default renderer is now `JAVA2D` unless `-Drenderer=P2D` is passed explicitly.
 - Verified successful run used:
   - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false`
 - That run completed successfully and printed `Goodbye`.
@@ -63,6 +65,9 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `./gradlew compileJava`
 - Run modern path with verified settings:
   - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false`
+- Run a specific modern scene:
+  - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false -Dscene=ModernTaylorsScene`
+  - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false -Dscene=ModernTexScene`
 - Run legacy path:
   - `./gradlew run --console=plain -DlegacyDirections=true -Drenderer=JAVA2D -Dfullscreen=false`
 

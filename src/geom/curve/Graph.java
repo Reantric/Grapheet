@@ -1,6 +1,7 @@
 package geom.curve;
 
 import geom.Grid;
+import processing.core.PConstants;
 import storage.Color;
 import storage.ColorType;
 import storage.Vector;
@@ -25,6 +26,7 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
 
     public Graph(Grid plane){
         this.plane = plane;
+        configureDistance();
         double left = plane.canvasToPlane(new Vector(-WIDTH/2f)).x;
         this.bounds = new Vector((float) left,(float) left+WIDTH*plane.getScale().x);
         //System.out.println(bounds);
@@ -32,7 +34,13 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
 
     public Graph(Grid plane, Vector bounds){ // Graph is assumed to be explicitly defined, so bounds refers to xBounds
         this.plane = plane;
+        configureDistance();
         this.bounds = bounds;
+    }
+
+    private void configureDistance() {
+        // Sample at roughly 2 screen pixels per segment to avoid visibly faceted curves.
+        distance = Math.max(0.002, plane.getScale().x * 2.0);
     }
 
     public void setValues(Function<Double,Double> f){ // TODO: add bounds check for NaN numbers
@@ -53,11 +61,35 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
     public void render() {
         plane.p.stroke(color);
         plane.p.strokeWeight(5);
-        for (int i = 0; i < index.x; i++){
-            if (yValues[i] > 1.33*plane.getBegin().y || yValues[i] < 1.33*plane.getEnd().y)
-                continue;
-            plane.p.line(xValues[i],yValues[i],xValues[i+1],yValues[i+1]);
+        plane.p.noFill();
+
+        int lastIndex = Math.min(xValues.length - 1, Math.max(0, (int) index.x));
+        boolean drawingSegment = false;
+
+        for (int i = 0; i < lastIndex; i++){
+            boolean currentVisible = isVisible(yValues[i]);
+            boolean nextVisible = isVisible(yValues[i + 1]);
+
+            if (currentVisible && nextVisible) {
+                if (!drawingSegment) {
+                    plane.p.beginShape();
+                    plane.p.vertex(xValues[i], yValues[i]);
+                    drawingSegment = true;
+                }
+                plane.p.vertex(xValues[i + 1], yValues[i + 1]);
+            } else if (drawingSegment) {
+                plane.p.endShape();
+                drawingSegment = false;
+            }
         }
+
+        if (drawingSegment) {
+            plane.p.endShape(PConstants.OPEN);
+        }
+    }
+
+    private boolean isVisible(float yValue) {
+        return yValue <= 1.33f * plane.getBegin().y && yValue >= 1.33f * plane.getEnd().y;
     }
 
     public boolean advanceReveal() {

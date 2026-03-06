@@ -10,6 +10,7 @@ import processing.event.MouseEvent;
 import java.lang.reflect.InvocationTargetException;
 
 import static geom.DataGrid.*;
+import static processing.core.PConstants.ROUND;
 
 public class Main extends Applet {
     public static PFont myFont, italics;
@@ -49,7 +50,7 @@ public class Main extends Applet {
 
 
     public void settings() {
-        useP2DRenderer = !"JAVA2D".equalsIgnoreCase(System.getProperty("renderer", "P2D"));
+        useP2DRenderer = "P2D".equalsIgnoreCase(System.getProperty("renderer", "JAVA2D"));
         useFullscreen = Boolean.parseBoolean(System.getProperty("fullscreen", "true"));
 
         if (useP2DRenderer) {
@@ -94,11 +95,15 @@ public class Main extends Applet {
 
     private void init(){
         colorMode(HSB, 360, 100, 100,100);
+        if (!useP2DRenderer) {
+            hint(ENABLE_STROKE_PURE);
+        }
         translate(WIDTH/2f,HEIGHT/2f);
         background(0);
         shapeMode(CENTER);
         rectMode(CORNERS);
         strokeCap(ROUND);
+        strokeJoin(ROUND);
         ellipseMode(CENTER);
     }
 
