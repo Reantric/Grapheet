@@ -93,6 +93,29 @@ application {
     mainClass.set(javaMainClass)
 }
 
+def resolveSystemProperty = { String name, String fallback ->
+    def value = System.getProperty(name)
+    value == null || value.trim().isEmpty() ? fallback : value
+}
+
+def prependSearchPath = { String prefix, String existing ->
+    existing ? "${prefix}:${existing}" : prefix
+}
+
+def configureMainRunTask = { JavaExec task, Map defaults = [:] ->
+    def options = [
+            recordVideo: 'false',
+            renderer   : 'JAVA2D',
+            fullscreen : 'true',
+            scene      : ''
+    ] + defaults
+
+    task.systemProperty("recordVideo", resolveSystemProperty("recordVideo", options.recordVideo))
+    task.systemProperty("renderer", resolveSystemProperty("renderer", options.renderer))
+    task.systemProperty("fullscreen", resolveSystemProperty("fullscreen", options.fullscreen))
+    task.systemProperty("scene", resolveSystemProperty("scene", options.scene))
+}
+
 tasks.register('unpackProcessingNatives', Sync) {
     def platform = processingNativePlatform()
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -110,13 +133,30 @@ tasks.register("runSmiley", JavaExec) {
     description = "Runs a simple Processing sketch to verify rendering."
     classpath = sourceSets.main.runtimeClasspath
     mainClass.set("VerifyProcessing")
-    systemProperty("recordVideo", System.getProperty("recordVideo", "false"))
-    systemProperty("ffmpegPath", System.getProperty("ffmpegPath", ""))
-    systemProperty("maxFrames", System.getProperty("maxFrames", "0"))
+    systemProperty("recordVideo", resolveSystemProperty("recordVideo", "false"))
+    systemProperty("ffmpegPath", resolveSystemProperty("ffmpegPath", ""))
+    systemProperty("hideSurface", resolveSystemProperty("hideSurface", "false"))
+    systemProperty("maxFrames", resolveSystemProperty("maxFrames", "0"))
 }
 
 tasks.named("run", JavaExec).configure {
-    systemProperty("recordVideo", System.getProperty("recordVideo", "false"))
+    configureMainRunTask(it)
+}
+
+tasks.register("runWindowed", JavaExec) {
+    group = "application"
+    description = "Runs the main Grapheet sketch in a window for local development."
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass.set(javaMainClass)
+    configureMainRunTask(it, [fullscreen: 'false'])
+}
+
+tasks.register("runP2DWindowed", JavaExec) {
+    group = "application"
+    description = "Runs the main Grapheet sketch in a window using the P2D renderer."
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass.set(javaMainClass)
+    configureMainRunTask(it, [fullscreen: 'false', renderer: 'P2D'])
 }
 
 tasks.withType(JavaExec).configureEach {
@@ -125,15 +165,15 @@ tasks.withType(JavaExec).configureEach {
     })
     dependsOn tasks.named('unpackProcessingNatives')
     jvmArgs '--enable-native-access=ALL-UNNAMED'
-    systemProperty("renderer", System.getProperty("renderer", "JAVA2D"))
-    systemProperty("fullscreen", System.getProperty("fullscreen", "true"))
-    systemProperty("scene", System.getProperty("scene", ""))
     doFirst {
         def javaHome = javaLauncher.get().metadata.installationPath.asFile.absolutePath
         def platform = processingNativePlatform()
         def nativeDir = layout.buildDirectory.dir("processing-natives/natives/${platform}").get().asFile.absolutePath
+        def nativeSearchPath = "${nativeDir}:${javaHome}/lib"
         def existingLdLibraryPath = System.getenv('LD_LIBRARY_PATH')
-        environment 'LD_LIBRARY_PATH', existingLdLibraryPath ? "${nativeDir}:${javaHome}/lib:${existingLdLibraryPath}" : "${nativeDir}:${javaHome}/lib"
+        def existingDyldLibraryPath = System.getenv('DYLD_LIBRARY_PATH')
+        environment 'LD_LIBRARY_PATH', prependSearchPath(nativeSearchPath, existingLdLibraryPath)
+        environment 'DYLD_LIBRARY_PATH', prependSearchPath(nativeSearchPath, existingDyldLibraryPath)
         jvmArgs "-Djava.library.path=${nativeDir}"
     }
 }

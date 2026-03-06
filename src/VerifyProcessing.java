@@ -20,6 +20,11 @@ public class VerifyProcessing extends PApplet {
         textSize(14);
 
         maxFrames = Integer.getInteger("maxFrames", 0);
+        boolean hideSurface = Boolean.getBoolean("hideSurface")
+                || Boolean.parseBoolean(System.getenv().getOrDefault("CI", "false"));
+        if (hideSurface) {
+            surface.setVisible(false);
+        }
 
         boolean recordVideo = Boolean.getBoolean("recordVideo");
         if (recordVideo) {
