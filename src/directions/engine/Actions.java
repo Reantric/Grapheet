@@ -29,8 +29,8 @@ public final class Actions {
         return new ParallelAction(actions);
     }
 
-    public static Action legacy(BooleanSupplier tickUntilDone) {
-        return new LegacyAction(Objects.requireNonNull(tickUntilDone, "tickUntilDone"));
+    public static Action update(BooleanSupplier tickUntilDone) {
+        return new UpdateAction(Objects.requireNonNull(tickUntilDone, "tickUntilDone"));
     }
 
     public static Action tween(FloatValue value, float target, double seconds) {

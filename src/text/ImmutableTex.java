@@ -40,19 +40,17 @@ public class ImmutableTex {
         this.p = p;
         int id = encode(str);
         this.color = color;
-        boolean debug = false;
         String svgPath = "temp/" + id + ".svg";
 
         if (!new File(svgPath).exists()) {
             converter = new SVGConverter(color); // TODO: Modify Later
             converter.write(str, svgPath, 60);
-            debug = true;
         }
 
         this.latex = p.loadShape(svgPath).getChild("eq");
         this.latex.disableStyle();
         dim = new Vector(latex.getWidth(),latex.getHeight());
-        setupBoundingBoxCrap(debug, svgPath);
+        setupBoundingBoxCrap(svgPath);
         color.setAlpha(0);
     }
 
@@ -60,7 +58,7 @@ public class ImmutableTex {
         this(p,str,new Color(ColorType.CYAN));
     }
 
-    private void setupBoundingBoxCrap(boolean debug, String svgPath){
+    private void setupBoundingBoxCrap(String svgPath){
         XML xml = p.loadXML(svgPath).getChild("g");
 
         tex = new ArrayList<>();
@@ -124,8 +122,6 @@ public class ImmutableTex {
             bbox.heights.add(new Vector(prevPosLow.y,prevPosHigh.y)); // this is left/bottom justified, that might be a problem...
         }
         endingInd = tex.size()-1;
-        if (debug)
-            p.println("h1gh",bbox.heights);
     }
 
     public void setBoundingBoxIndex(int index){this.endingInd = index;}

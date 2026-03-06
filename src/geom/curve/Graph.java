@@ -8,7 +8,6 @@ import util.map.Interpolatable;
 import util.map.MapEase;
 import util.map.MapType;
 
-import java.util.Arrays;
 import java.util.function.Function;
 
 import static geom.DataGrid.WIDTH;
@@ -48,8 +47,6 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
         }
         xValues[ender] = (float) (recipScaleX * bounds.y);
         yValues[ender] = (float) (recipScaleY * f.apply((double) bounds.y));
-        //System.out.println(Arrays.toString(xValues));
-        System.out.println(Arrays.toString(yValues));
         this.f = f;
     }
 
@@ -63,13 +60,21 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
         }
     }
 
+    public boolean advanceReveal() {
+        return advanceReveal(3);
+    }
+
+    public boolean advanceReveal(float time) {
+        return index.interpolate(new Vector(xValues.length-1),time);
+    }
+
     public boolean reveal(){
        return reveal(3);
     }
 
     public boolean reveal(float time){
         render();
-        return index.interpolate(new Vector(xValues.length-1),time);
+        return advanceReveal(time);
     }
 
     public boolean draw(){

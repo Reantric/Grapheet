@@ -74,29 +74,29 @@ public final class ModernTaylorsScene extends Scene {
                 ),
                 Actions.call(this::showSinGraph),
                 Actions.parallel(
-                        Actions.legacy(() -> sin.reveal(3f)),
+                        Actions.update(() -> sin.advanceReveal(3f)),
                         Actions.tween(Values.of(sinText.getColor().getAlpha()), 100f, 1.0, STANDARD_EASING)
                 ),
                 Actions.call(this::showTaylorGraph),
                 Actions.parallel(
-                        Actions.legacy(() -> taylor.reveal(3f)),
+                        Actions.update(() -> taylor.advanceReveal(3f)),
                         Actions.tween(Values.of(taylorText.getColor().getAlpha()), 100f, 1.0, STANDARD_EASING)
                 ),
                 Actions.call(() -> taylorText.setBoundingBoxIndex(8)),
                 Actions.parallel(
                         fadeIn(taylorText.getSubtex(3, 8)),
-                        Actions.legacy(() -> taylor.interpolate(taylorValues.get(1)::taylor)),
+                        Actions.update(() -> taylor.interpolate(taylorValues.get(1)::taylor)),
                         Actions.waitSeconds(2.0)
                 ),
                 Actions.call(() -> taylorText.setBoundingBoxIndex(14)),
                 Actions.parallel(
                         fadeIn(taylorText.getSubtex(8, 15)),
-                        Actions.legacy(() -> taylor.interpolate(taylorValues.get(2)::taylor))
+                        Actions.update(() -> taylor.interpolate(taylorValues.get(2)::taylor))
                 ),
                 Actions.call(taylorText::setBoundingBoxIndex),
                 Actions.parallel(
                         fadeIn(taylorText.getSubtex(15)),
-                        Actions.legacy(() -> taylor.interpolate(taylorValues.get(3)::taylor))
+                        Actions.update(() -> taylor.interpolate(taylorValues.get(3)::taylor))
                 ),
                 Actions.waitSeconds(1.0)
         );
@@ -134,7 +134,7 @@ public final class ModernTaylorsScene extends Scene {
     }
 
     private Action fadeIn(List<ShapeWrapper> shapes) {
-        return Actions.legacy(() -> {
+        return Actions.update(() -> {
             boolean finished = true;
             for (ShapeWrapper shape : shapes) {
                 finished &= shape.getColor().getAlpha().interpolate(100);

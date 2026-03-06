@@ -2,10 +2,10 @@ package directions.engine;
 
 import java.util.function.BooleanSupplier;
 
-final class LegacyAction extends ActionBase {
+final class UpdateAction extends ActionBase {
     private final BooleanSupplier tickUntilDone;
 
-    LegacyAction(BooleanSupplier tickUntilDone) {
+    UpdateAction(BooleanSupplier tickUntilDone) {
         this.tickUntilDone = tickUntilDone;
     }
 

@@ -7,6 +7,7 @@ This file is the handoff context for future Codex sessions. Read it before start
 - The project is being modernized away from the legacy `directions.Scene` + `step[]` flow.
 - The new path lives under `src/directions/engine/` and `src/directions/modern/`.
 - A real legacy scene has been ported to the new engine: `src/directions/modern/scenes/ModernTaylorsScene.java`.
+- `ModernTaylorsScene` no longer uses the old `Actions.legacy(...)` bridge.
 
 ## What Exists Now
 - New engine primitives:
@@ -46,17 +47,16 @@ This file is the handoff context for future Codex sessions. Read it before start
 
 ## Architectural Notes
 - `Grid`, `Graph`, and `ImmutableTex` now expose render/update separation, so the new engine can control orchestration cleanly.
-- The current Taylor port is intentionally hybrid:
-  - scene orchestration is modern
-  - some object-level animation still bridges through legacy stateful methods via `Actions.legacy(...)`
-- This is acceptable for migration, but the next refactor target should be reducing those legacy bridges.
+- `ModernTaylorsScene` is now native to the new engine action flow.
+- `Graph` reveal now has a clean update path separate from rendering, so the modern scene no longer double-renders graph segments during reveal.
+- The old legacy scene runner still exists, but the modern Taylor path no longer depends on it.
 
 ## Recommended Next Steps
-1. Reduce debug printing left in older classes, especially graph/text generation output.
+1. Reduce debug printing left in unrelated legacy classes, especially `DataGraph`, SVG utilities, and older scene code.
 2. Continue porting meaningful scenes from legacy `directions/subscene/...` into `src/directions/modern/scenes/`.
-3. Remove more legacy animation state from `Graph`, `Grid`, and related classes.
-4. Investigate whether `P2D` can be made reliable on Linux, or keep `JAVA2D` as a supported fallback.
-5. Consider replacing reflection-based legacy scene discovery entirely once the modern path covers enough scenes.
+3. Remove the old `directions.Directions` / `directions.Scene` runner once enough scenes are ported.
+4. Remove more legacy animation state from `Graph`, `Grid`, and related classes where it still leaks into modern usage.
+5. Investigate whether `P2D` can be made reliable on Linux, or keep `JAVA2D` as a supported fallback.
 
 ## Working Commands
 - Compile:
