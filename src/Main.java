@@ -1,6 +1,8 @@
 import com.hamoid.VideoExport;
 import core.Applet;
 import directions.Directions;
+import directions.engine.Director;
+import directions.modern.ModernScenes;
 import processing.core.PApplet;
 import processing.core.PFont;
 import processing.event.MouseEvent;
@@ -13,15 +15,24 @@ public class Main extends Applet {
     public static PFont myFont, italics;
     public VideoExport videoExport;
     private boolean recordVideo;
+    private boolean useLegacyDirections;
+    private Director director;
+    private boolean useP2DRenderer;
+    private boolean useFullscreen;
 
     public void setup(){
         String commonPath = "src/data/";
         myFont = createFont(commonPath + "cmunbmr.ttf", 150, true);
         italics = createFont(commonPath + "cmunbmo.ttf", 150, true);
-        try {
-            Directions.init(this);
-        } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | InstantiationException noSuchMethodException) {
-            noSuchMethodException.printStackTrace();
+        useLegacyDirections = Boolean.getBoolean("legacyDirections");
+        if (useLegacyDirections) {
+            try {
+                Directions.init(this);
+            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | InstantiationException noSuchMethodException) {
+                noSuchMethodException.printStackTrace();
+            }
+        } else {
+            director = ModernScenes.create(this);
         }
 
         recordVideo = Boolean.getBoolean("recordVideo");
@@ -38,8 +49,22 @@ public class Main extends Applet {
 
 
     public void settings() {
-        //size(WIDTH, HEIGHT, P2D);
-        fullScreen(P2D);// P2D freakishly slow
+        useP2DRenderer = !"JAVA2D".equalsIgnoreCase(System.getProperty("renderer", "P2D"));
+        useFullscreen = Boolean.parseBoolean(System.getProperty("fullscreen", "true"));
+
+        if (useP2DRenderer) {
+            if (useFullscreen) {
+                fullScreen(P2D);
+            } else {
+                size(WIDTH, HEIGHT, P2D);
+            }
+        } else {
+            if (useFullscreen) {
+                fullScreen();
+            } else {
+                size(WIDTH, HEIGHT);
+            }
+        }
         smooth(8);
     }
 
@@ -57,7 +82,8 @@ public class Main extends Applet {
         //beginRecord(SVG, "frame-####.svg");
         scale(e);
         init();
-        if (Directions.directions()){ // if all scenes finishes, terminate!
+        boolean finished = useLegacyDirections ? Directions.directions() : director.drawFrame();
+        if (finished){ // if all scenes finishes, terminate!
             System.out.println("Goodbye");
             if (recordVideo) videoExport.endMovie();
             exit();

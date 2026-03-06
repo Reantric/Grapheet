@@ -40,7 +40,7 @@ public class Grid {
         this.color = new Color(ColorType.WHITE);
         this.textColor = new Color(ColorType.WHITE);
         this.textColor.setAlpha(0);
-        String commonPath = "src\\data\\";
+        String commonPath = "src/data/";
         font = p.createFont(commonPath + "cmunbmr.ttf", 150, true);
         p.textFont(font);
         update();
@@ -67,6 +67,18 @@ public class Grid {
 
     public void setScale(Vector scale){
         this.scale = scale;
+    }
+
+    public Vector getSpacing() {
+        return spacing;
+    }
+
+    public Color getTextColor() {
+        return textColor;
+    }
+
+    public Vector getIncrementor() {
+        return incrementor;
     }
 
     public Vector getBegin(){
@@ -168,12 +180,16 @@ public class Grid {
     }
 
 
-    public boolean draw(){
+    public void render(){
         p.translate(PVector.mult(camera,-1));
         update();
         generate();
         drawMainAxes();
         label();
+    }
+
+    public boolean draw(){
+        render();
         //p.println(incrementor);
         return spacing.interpolate(new Vector(WIDTH/2f,HEIGHT/2f),1) & textColor.getAlpha().interpolate(100);
     }

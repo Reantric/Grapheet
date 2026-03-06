@@ -77,7 +77,7 @@ public class DataGrid {
 
     public DataGrid(Applet p){
         this.p = p;
-        String commonPath = "src\\data\\";
+        String commonPath = "src/data/";
         font = p.createFont(commonPath + "cmunbmr.ttf", 150, true);
         color = new Color(0,0,95);
         // Empty for now because nothing much really happens

@@ -23,7 +23,7 @@ public class Grapheet extends Scene {
 
     private void init(){
         plane = new DataGrid(window);
-        String[] strings = window.loadStrings("src\\data\\datas.csv");
+        String[] strings = window.loadStrings("src/data/datas.csv");
         ColorType[] colorTypes = ColorType.values();
         colorWheel = new Color[colorTypes.length];
         for (int u = 0; u < colorTypes.length; u++)

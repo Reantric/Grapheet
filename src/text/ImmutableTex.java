@@ -41,17 +41,18 @@ public class ImmutableTex {
         int id = encode(str);
         this.color = color;
         boolean debug = false;
+        String svgPath = "temp/" + id + ".svg";
 
-        if (!new File(".\\temp\\" + id + ".svg").exists()) {
+        if (!new File(svgPath).exists()) {
             converter = new SVGConverter(color); // TODO: Modify Later
-            converter.write(str, ".\\temp\\" + id + ".svg", 60);
+            converter.write(str, svgPath, 60);
             debug = true;
         }
 
-        this.latex = p.loadShape(".\\temp\\" + id + ".svg").getChild("eq");
+        this.latex = p.loadShape(svgPath).getChild("eq");
         this.latex.disableStyle();
         dim = new Vector(latex.getWidth(),latex.getHeight());
-        setupBoundingBoxCrap(debug,id);
+        setupBoundingBoxCrap(debug, svgPath);
         color.setAlpha(0);
     }
 
@@ -59,8 +60,8 @@ public class ImmutableTex {
         this(p,str,new Color(ColorType.CYAN));
     }
 
-    private void setupBoundingBoxCrap(boolean debug,int id){
-        XML xml = p.loadXML(".\\temp\\" + id + ".svg").getChild("g");
+    private void setupBoundingBoxCrap(boolean debug, String svgPath){
+        XML xml = p.loadXML(svgPath).getChild("g");
 
         tex = new ArrayList<>();
         Vector prevPosLow = new Vector(MAX_FLOAT,MAX_FLOAT), prevPosHigh = new Vector();
@@ -175,7 +176,7 @@ public class ImmutableTex {
     }
 
 
-    public boolean draw() {
+    public void render() {
         //drawBoundingBox(x, y);
 
         p.shapeMode(CORNER); // necessary evil
@@ -184,7 +185,15 @@ public class ImmutableTex {
             p.fill(s.getColor());
             p.shape(s.getShape(),pos.x,pos.y,s.getShape().getWidth()*scale.x,s.getShape().getHeight()*scale.y);
         }
+    }
+
+    public boolean fadeIn() {
         return color.getAlpha().interpolate(100);
+    }
+
+    public boolean draw() {
+        render();
+        return fadeIn();
     }
 
     public void setPos(float x, float y){

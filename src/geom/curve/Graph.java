@@ -53,11 +53,7 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
         this.f = f;
     }
 
-    public boolean draw(){
-       return draw(3);
-    }
-
-    public boolean draw(float time){
+    public void render() {
         plane.p.stroke(color);
         plane.p.strokeWeight(5);
         for (int i = 0; i < index.x; i++){
@@ -65,7 +61,23 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
                 continue;
             plane.p.line(xValues[i],yValues[i],xValues[i+1],yValues[i+1]);
         }
+    }
+
+    public boolean reveal(){
+       return reveal(3);
+    }
+
+    public boolean reveal(float time){
+        render();
         return index.interpolate(new Vector(xValues.length-1),time);
+    }
+
+    public boolean draw(){
+       return draw(3);
+    }
+
+    public boolean draw(float time){
+        return reveal(time);
     }
 
     private Vector incrementor = new Vector(0);

@@ -4,6 +4,36 @@ plugins {
     id 'java-library'
 }
 
+def appJavaVersion = 21
+
+def processingNativePlatform = {
+    def osName = System.getProperty('os.name').toLowerCase()
+    def arch = System.getProperty('os.arch').toLowerCase()
+
+    if (osName.contains('linux')) {
+        if (arch.contains('aarch64') || arch.contains('arm64')) {
+            return 'linux-aarch64'
+        }
+        if (arch.contains('arm')) {
+            return 'linux-armv6hf'
+        }
+        if (arch.contains('64')) {
+            return 'linux-amd64'
+        }
+        return 'linux-i586'
+    }
+
+    if (osName.contains('mac')) {
+        return 'macosx-universal'
+    }
+
+    if (osName.contains('win')) {
+        return arch.contains('64') ? 'windows-amd64' : 'windows-i586'
+    }
+
+    throw new GradleException("Unsupported platform for Processing natives: ${osName} / ${arch}")
+}
+
 group 'com.protonlaser'
 version '1.0-SNAPSHOT'
 
@@ -15,7 +45,7 @@ repositories {
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(appJavaVersion)
     }
 }
 sourceSets {
@@ -29,6 +59,7 @@ dependencies {
 
     // Processing (Maven Central)
     implementation 'org.processing:core:4.4.10'
+    runtimeOnly fileTree(dir: 'library/processing', include: ['*natives-*.jar'])
 
     // VideoExport (local jars under library/VideoExport)
     implementation fileTree(dir: 'library/VideoExport', include: ['*.jar'])
@@ -62,6 +93,18 @@ application {
     mainClass.set(javaMainClass)
 }
 
+tasks.register('unpackProcessingNatives', Sync) {
+    def platform = processingNativePlatform()
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from({
+        fileTree(dir: 'library/processing', include: [
+                "gluegen-rt-natives-${platform}.jar",
+                "jogl-all-natives-${platform}.jar"
+        ]).collect { zipTree(it) }
+    })
+    into layout.buildDirectory.dir('processing-natives')
+}
+
 tasks.register("runSmiley", JavaExec) {
     group = "application"
     description = "Runs a simple Processing sketch to verify rendering."
@@ -78,8 +121,21 @@ tasks.named("run", JavaExec).configure {
 
 tasks.withType(JavaExec).configureEach {
     javaLauncher.set(javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(appJavaVersion)
     })
+    dependsOn tasks.named('unpackProcessingNatives')
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
+    systemProperty("renderer", System.getProperty("renderer", "P2D"))
+    systemProperty("fullscreen", System.getProperty("fullscreen", "true"))
+    systemProperty("legacyDirections", System.getProperty("legacyDirections", "false"))
+    doFirst {
+        def javaHome = javaLauncher.get().metadata.installationPath.asFile.absolutePath
+        def platform = processingNativePlatform()
+        def nativeDir = layout.buildDirectory.dir("processing-natives/natives/${platform}").get().asFile.absolutePath
+        def existingLdLibraryPath = System.getenv('LD_LIBRARY_PATH')
+        environment 'LD_LIBRARY_PATH', existingLdLibraryPath ? "${nativeDir}:${javaHome}/lib:${existingLdLibraryPath}" : "${nativeDir}:${javaHome}/lib"
+        jvmArgs "-Djava.library.path=${nativeDir}"
+    }
 }
 
 task createPom {
