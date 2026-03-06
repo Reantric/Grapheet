@@ -37,6 +37,8 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `renderer`
   - `fullscreen`
   - `recordVideo`
+- JVM crash logs are ignored via `hs_err_pid*.log`.
+- The tracked `hs_err_pid79698.log` dump was removed and scrubbed from branch history because it contained local path/user data.
 
 ## Portability Fixes Already Made
 - Several Windows-only paths were converted to portable forward-slash paths:
