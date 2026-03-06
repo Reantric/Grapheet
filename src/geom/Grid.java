@@ -12,14 +12,16 @@ import geom.curve.Graph;
 import java.text.DecimalFormat;
 import java.util.function.Function;
 
-import static geom.DataGrid.HEIGHT;
-import static geom.DataGrid.WIDTH;
 import static processing.core.PConstants.*;
-import static processing.core.PConstants.CENTER;
 import static util.Useful.ceilAny;
 import static util.Useful.floorAny;
 
 public class Grid {
+    public static final int WIDTH = 1920;
+    public static final int HEIGHT = 1080;
+    public static final int X = 3;
+    public static final int Y = 5;
+
     public Applet p;
     Color color, textColor;
     public Vector incrementor = new Vector(200,200), startingIncrementor = new Vector(incrementor), baseIncrementor = new Vector(incrementor);

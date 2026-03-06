@@ -1,22 +1,19 @@
 import com.hamoid.VideoExport;
 import core.Applet;
-import directions.Directions;
 import directions.engine.Director;
 import directions.modern.ModernScenes;
 import processing.core.PApplet;
 import processing.core.PFont;
 import processing.event.MouseEvent;
 
-import java.lang.reflect.InvocationTargetException;
-
-import static geom.DataGrid.*;
+import static geom.Grid.*;
 import static processing.core.PConstants.ROUND;
 
 public class Main extends Applet {
     public static PFont myFont, italics;
+    private static float zoom = 1f;
     public VideoExport videoExport;
     private boolean recordVideo;
-    private boolean useLegacyDirections;
     private Director director;
     private boolean useP2DRenderer;
     private boolean useFullscreen;
@@ -25,16 +22,7 @@ public class Main extends Applet {
         String commonPath = "src/data/";
         myFont = createFont(commonPath + "cmunbmr.ttf", 150, true);
         italics = createFont(commonPath + "cmunbmo.ttf", 150, true);
-        useLegacyDirections = Boolean.getBoolean("legacyDirections");
-        if (useLegacyDirections) {
-            try {
-                Directions.init(this);
-            } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException | InstantiationException noSuchMethodException) {
-                noSuchMethodException.printStackTrace();
-            }
-        } else {
-            director = ModernScenes.create(this);
-        }
+        director = ModernScenes.create(this);
 
         recordVideo = Boolean.getBoolean("recordVideo");
         if (recordVideo) {
@@ -81,9 +69,9 @@ public class Main extends Applet {
 
     public void draw(){
         //beginRecord(SVG, "frame-####.svg");
-        scale(e);
+        scale(zoom);
         init();
-        boolean finished = useLegacyDirections ? Directions.directions() : director.drawFrame();
+        boolean finished = director.drawFrame();
         if (finished){ // if all scenes finishes, terminate!
             System.out.println("Goodbye");
             if (recordVideo) videoExport.endMovie();
@@ -109,7 +97,7 @@ public class Main extends Applet {
 
 
     public void mouseWheel(MouseEvent event) {
-        e += -0.07f * event.getCount();
+        zoom += -0.07f * event.getCount();
     }
 
     public void keyPressed() {

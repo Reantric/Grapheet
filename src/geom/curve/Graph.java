@@ -11,7 +11,7 @@ import util.map.MapType;
 
 import java.util.function.Function;
 
-import static geom.DataGrid.WIDTH;
+import static geom.Grid.WIDTH;
 import static processing.core.PConstants.EPSILON;
 
 public class Graph implements Interpolatable<Function<Double,Double>> { // 2D graph, fuck 3D, maybe change Interp<Func> to Interp<Graph>?

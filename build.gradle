@@ -127,7 +127,6 @@ tasks.withType(JavaExec).configureEach {
     jvmArgs '--enable-native-access=ALL-UNNAMED'
     systemProperty("renderer", System.getProperty("renderer", "JAVA2D"))
     systemProperty("fullscreen", System.getProperty("fullscreen", "true"))
-    systemProperty("legacyDirections", System.getProperty("legacyDirections", "false"))
     systemProperty("scene", System.getProperty("scene", ""))
     doFirst {
         def javaHome = javaLauncher.get().metadata.installationPath.asFile.absolutePath

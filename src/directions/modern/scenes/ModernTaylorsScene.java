@@ -24,8 +24,8 @@ import util.map.MapType;
 import java.util.ArrayList;
 import java.util.List;
 
-import static geom.DataGrid.HEIGHT;
-import static geom.DataGrid.WIDTH;
+import static geom.Grid.HEIGHT;
+import static geom.Grid.WIDTH;
 
 public final class ModernTaylorsScene extends Scene {
     private static final Easing STANDARD_EASING = Easings.from(MapType.QUADRATIC, MapEase.EASE_IN_OUT);
