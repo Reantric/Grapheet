@@ -54,19 +54,9 @@ public final class TexScene extends Scene {
         );
 
         return Actions.sequence(
-                Actions.tween(
-                        Values.of(primary.getColor().getAlpha()),
-                        100f,
-                        0.8,
-                        Easings.from(MapType.QUADRATIC, MapEase.EASE_IN_OUT)
-                ),
+                Actions.tween(Values.of(primary.getColor().getAlpha()), 100f, 0.8),
                 Actions.parallel(
-                        Actions.tween(
-                                Values.of(secondary.getColor().getAlpha()),
-                                100f,
-                                0.8,
-                                Easings.from(MapType.QUADRATIC, MapEase.EASE_IN_OUT)
-                        ),
+                        Actions.tween(Values.of(secondary.getColor().getAlpha()), 100f, 0.8),
                         Actions.tween(
                                 Values.of(secondary.getPos()),
                                 secondaryEnd,

@@ -6,6 +6,7 @@ import directions.engine.Scene;
 import directions.scenes.TaylorsScene;
 import directions.scenes.TexScene;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.Locale;
 
 public final class SceneRegistry {
@@ -59,9 +60,26 @@ public final class SceneRegistry {
 
         try {
             return sceneClass.getDeclaredConstructor(Applet.class).newInstance(applet);
-        } catch (ReflectiveOperationException e) {
+        } catch (NoSuchMethodException e) {
             throw new IllegalArgumentException(
                     "Scene class '" + resolvedClassName + "' must expose a constructor that accepts core.Applet",
+                    e
+            );
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (cause instanceof Error error) {
+                throw error;
+            }
+            throw new IllegalStateException(
+                    "Scene class '" + resolvedClassName + "' constructor threw an exception",
+                    cause
+            );
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalArgumentException(
+                    "Scene class '" + resolvedClassName + "' could not be instantiated",
                     e
             );
         }

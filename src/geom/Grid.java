@@ -17,8 +17,6 @@ import static util.Useful.ceilAny;
 import static util.Useful.floorAny;
 
 public class Grid {
-    public static final int WIDTH = 1920;
-    public static final int HEIGHT = 1080;
     public static final int X = 3;
     public static final int Y = 5;
 
@@ -53,16 +51,18 @@ public class Grid {
     }
 
     private void update(){
+        float viewportWidth = getViewportWidth();
+        float viewportHeight = getViewportHeight();
         displacement = PVector.sub(camera,startingCamera);
         scale = new Vector(baseIncrementor.x/(startingIncrementor.x * incrementor.x),baseIncrementor.y/(startingIncrementor.y * incrementor.y)); // wtf
         // perhaps scale ought to decide incrementor?
 
 
         // once fadingLines occur, update baseIncrementor using rules from 2DGP
-        begin.x = (float) ceilAny(displacement.x - WIDTH/2f,incrementor.x);
-        end.x = (float) ceilAny(camera.x + WIDTH/2f,incrementor.x);
-        begin.y = (float) floorAny(HEIGHT/2f + camera.y, incrementor.y);
-        end.y = (float) floorAny(-HEIGHT/2f + camera.y, incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
+        begin.x = (float) ceilAny(displacement.x - viewportWidth / 2f, incrementor.x);
+        end.x = (float) ceilAny(camera.x + viewportWidth / 2f, incrementor.x);
+        begin.y = (float) floorAny(viewportHeight / 2f + camera.y, incrementor.y);
+        end.y = (float) floorAny(-viewportHeight / 2f + camera.y, incrementor.y); //This is the top of the p (as it is translated based on cameraPos)
         ender.x = ceilToNearestOdd((end.x-begin.x)/incrementor.x);
         ender.y =  ceilToNearestOdd((begin.y-end.y)/incrementor.y);
     }
@@ -193,13 +193,22 @@ public class Grid {
     public boolean draw(){
         render();
         //p.println(incrementor);
-        return spacing.interpolate(new Vector(WIDTH/2f,HEIGHT/2f),1) & textColor.getAlpha().interpolate(100);
+        return spacing.interpolate(new Vector(getViewportWidth() / 2f, getViewportHeight() / 2f), 1)
+                & textColor.getAlpha().interpolate(100);
     }
 
     public Graph graph(Function<Double,Double> f){
         Graph graph = new Graph(this);
         graph.setValues(f.andThen(t -> -t));
         return graph;
+    }
+
+    public float getViewportWidth() {
+        return p.width;
+    }
+
+    public float getViewportHeight() {
+        return p.height;
     }
 
     public Vector getScale() {

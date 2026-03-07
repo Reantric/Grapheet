@@ -4,8 +4,6 @@ import core.Applet;
 import core.ShapeWrapper;
 import directions.engine.Action;
 import directions.engine.Actions;
-import directions.engine.Easing;
-import directions.engine.Easings;
 import directions.engine.Nodes;
 import directions.engine.Scene;
 import directions.engine.Values;
@@ -18,18 +16,11 @@ import storage.Color;
 import storage.ColorType;
 import storage.Vector;
 import text.ImmutableTex;
-import util.map.MapEase;
-import util.map.MapType;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static geom.Grid.HEIGHT;
-import static geom.Grid.WIDTH;
-
 public final class TaylorsScene extends Scene {
-    private static final Easing STANDARD_EASING = Easings.from(MapType.QUADRATIC, MapEase.EASE_IN_OUT);
-
     private final UnivariateDifferentiableFunction function = new Sin();
     private final List<DerivativeStructure> taylorValues = new ArrayList<>();
 
@@ -68,19 +59,19 @@ public final class TaylorsScene extends Scene {
 
         return Actions.sequence(
                 Actions.parallel(
-                        Actions.tween(Values.of(plane.getSpacing()), WIDTH / 2f, HEIGHT / 2f, 1.0, STANDARD_EASING),
-                        Actions.tween(Values.of(plane.getTextColor().getAlpha()), 100f, 1.0, STANDARD_EASING),
-                        Actions.tween(Values.of(plane.getIncrementor()), 150f, 150f, 3.6, STANDARD_EASING)
+                        Actions.tween(Values.of(plane.getSpacing()), halfViewportWidth(), halfViewportHeight(), 1.0),
+                        Actions.tween(Values.of(plane.getTextColor().getAlpha()), 100f, 1.0),
+                        Actions.tween(Values.of(plane.getIncrementor()), 150f, 150f, 3.6)
                 ),
                 Actions.call(this::showSinGraph),
                 Actions.parallel(
                         Actions.update(() -> sin.advanceReveal(3f)),
-                        Actions.tween(Values.of(sinText.getColor().getAlpha()), 100f, 1.0, STANDARD_EASING)
+                        Actions.tween(Values.of(sinText.getColor().getAlpha()), 100f, 1.0)
                 ),
                 Actions.call(this::showTaylorGraph),
                 Actions.parallel(
                         Actions.update(() -> taylor.advanceReveal(3f)),
-                        Actions.tween(Values.of(taylorText.getColor().getAlpha()), 100f, 1.0, STANDARD_EASING)
+                        Actions.tween(Values.of(taylorText.getColor().getAlpha()), 100f, 1.0)
                 ),
                 Actions.call(() -> taylorText.setBoundingBoxIndex(8)),
                 Actions.parallel(

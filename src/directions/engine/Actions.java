@@ -34,7 +34,7 @@ public final class Actions {
     }
 
     public static Action tween(FloatValue value, float target, double seconds) {
-        return tween(value, target, seconds, Easings.SMOOTHSTEP);
+        return tween(value, target, seconds, MotionDefaults.STANDARD);
     }
 
     public static Action tween(FloatValue value, float target, double seconds, Easing easing) {
@@ -42,7 +42,7 @@ public final class Actions {
     }
 
     public static Action tween(VectorValue value, float targetX, float targetY, double seconds) {
-        return tween(value, targetX, targetY, seconds, Easings.SMOOTHSTEP);
+        return tween(value, targetX, targetY, seconds, MotionDefaults.STANDARD);
     }
 
     public static Action tween(VectorValue value, float targetX, float targetY, double seconds, Easing easing) {
@@ -50,7 +50,7 @@ public final class Actions {
     }
 
     public static Action tween(VectorValue value, Vector target, double seconds) {
-        return tween(value, target.x, target.y, seconds, Easings.SMOOTHSTEP);
+        return tween(value, target.x, target.y, seconds, MotionDefaults.STANDARD);
     }
 
     public static Action tween(VectorValue value, Vector target, double seconds, Easing easing) {

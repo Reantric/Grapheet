@@ -11,7 +11,6 @@ import util.map.MapType;
 
 import java.util.function.Function;
 
-import static geom.Grid.WIDTH;
 import static processing.core.PConstants.EPSILON;
 
 public class Graph implements Interpolatable<Function<Double,Double>> { // 2D graph, fuck 3D, maybe change Interp<Func> to Interp<Graph>?
@@ -27,8 +26,9 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
     public Graph(Grid plane){
         this.plane = plane;
         configureDistance();
-        double left = plane.canvasToPlane(new Vector(-WIDTH/2f)).x;
-        this.bounds = new Vector((float) left,(float) left+WIDTH*plane.getScale().x);
+        float viewportWidth = plane.getViewportWidth();
+        double left = plane.canvasToPlane(new Vector(-viewportWidth / 2f)).x;
+        this.bounds = new Vector((float) left, (float) left + viewportWidth * plane.getScale().x);
         //System.out.println(bounds);
     }
 

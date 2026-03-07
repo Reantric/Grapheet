@@ -18,11 +18,14 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `SceneContext`
   - `Action` and composable actions in `Actions`
   - typed tween adapters in `Values`
+- Default `Actions.tween(...)` overloads now use the shared quadratic ease-in-out in `src/directions/engine/MotionDefaults.java`
+- `Scene` now exposes viewport helpers (`viewportWidth()`, `viewportHeight()`, and half-size variants) for scene layout/animation code
 - Scene registry:
   - `src/directions/SceneRegistry.java`
 - Scene selection can be overridden with `-Dscene=...`
 - Supported scene names are the canonical class names only: `TaylorsScene`, `TexScene`
 - Dev-only scene selection can be overridden with `-DsceneClass=...`
+- `-DsceneClass=...` now preserves constructor-thrown runtime failures instead of reporting them as missing `Applet` constructors
 - Gradle auto-generates `run<SceneName>` tasks for files under `src/directions/scenes/`
 - `./gradlew listScenes` prints the currently discoverable scene task names
 
@@ -61,6 +64,8 @@ This file is the handoff context for future Codex sessions. Read it before start
 
 ## Architectural Notes
 - `Grid`, `Graph`, and `ImmutableTex` now expose render/update separation, so the new engine can control orchestration cleanly.
+- Fixed windowed-size defaults now live in `src/core/RenderConfig.java`; runtime viewport math should read live `Applet.width` / `Applet.height` instead of `Grid` constants.
+- `Grid` and `Graph` no longer own global viewport constants; they derive bounds from the active canvas size.
 - `TaylorsScene` is now native to the new engine action flow.
 - `Graph` reveal now has a clean update path separate from rendering, so the scene no longer double-renders graph segments during reveal.
 - The old legacy runner, old scene tree, and old `DataGraph` / `DataGrid` classes have been removed.
