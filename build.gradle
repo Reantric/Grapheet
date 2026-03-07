@@ -102,13 +102,21 @@ def prependSearchPath = { String prefix, String existing ->
     existing ? "${prefix}:${existing}" : prefix
 }
 
+def discoverSceneNames = {
+    fileTree(dir: 'src/directions/scenes', include: ['*Scene.java'])
+            .files
+            .collect { it.name.replaceFirst(/\.java$/, '') }
+            .sort()
+}
+
 def configureMainRunTask = { JavaExec task, Map defaults = [:] ->
     def options = [
             recordVideo: 'false',
             ffmpegPath : '',
             renderer   : 'JAVA2D',
             fullscreen : 'true',
-            scene      : ''
+            scene      : '',
+            sceneClass : ''
     ] + defaults
 
     task.systemProperty("recordVideo", resolveSystemProperty("recordVideo", options.recordVideo))
@@ -116,6 +124,7 @@ def configureMainRunTask = { JavaExec task, Map defaults = [:] ->
     task.systemProperty("renderer", resolveSystemProperty("renderer", options.renderer))
     task.systemProperty("fullscreen", resolveSystemProperty("fullscreen", options.fullscreen))
     task.systemProperty("scene", resolveSystemProperty("scene", options.scene))
+    task.systemProperty("sceneClass", resolveSystemProperty("sceneClass", options.sceneClass))
 }
 
 tasks.register('unpackProcessingNatives', Sync) {
@@ -159,6 +168,36 @@ tasks.register("runP2DWindowed", JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass.set(javaMainClass)
     configureMainRunTask(it, [fullscreen: 'false', renderer: 'P2D'])
+}
+
+tasks.register("listScenes") {
+    group = "application"
+    description = "Lists discoverable scene classes under src/directions/scenes."
+    doLast {
+        def scenes = discoverSceneNames()
+        if (scenes.isEmpty()) {
+            println "No scenes found under src/directions/scenes"
+            return
+        }
+
+        println "Discovered scenes:"
+        scenes.each { sceneName ->
+            println " - ${sceneName} (task: run${sceneName})"
+        }
+    }
+}
+
+discoverSceneNames().each { sceneName ->
+    tasks.register("run${sceneName}", JavaExec) {
+        group = "application"
+        description = "Runs ${sceneName} in a window for local development."
+        classpath = sourceSets.main.runtimeClasspath
+        mainClass.set(javaMainClass)
+        configureMainRunTask(it, [
+                fullscreen: 'false',
+                sceneClass: "directions.scenes.${sceneName}"
+        ])
+    }
 }
 
 tasks.withType(JavaExec).configureEach {

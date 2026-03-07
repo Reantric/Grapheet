@@ -22,6 +22,9 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `src/directions/SceneRegistry.java`
 - Scene selection can be overridden with `-Dscene=...`
 - Supported scene names are the canonical class names only: `TaylorsScene`, `TexScene`
+- Dev-only scene selection can be overridden with `-DsceneClass=...`
+- Gradle auto-generates `run<SceneName>` tasks for files under `src/directions/scenes/`
+- `./gradlew listScenes` prints the currently discoverable scene task names
 
 ## Important Runtime Findings
 - `P2D` / JOGL was not stable in this Linux environment.
@@ -44,6 +47,7 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `fullscreen`
   - `recordVideo`
   - `ffmpegPath`
+  - `sceneClass`
 - Video export expects `ffmpeg` on `PATH` by default, and can be overridden with `-DffmpegPath=/absolute/path/to/ffmpeg`.
 - SVG export now creates parent directories automatically, so `temp/` can stay ignored and untracked.
 - JVM crash logs are ignored via `hs_err_pid*.log`.
@@ -75,3 +79,7 @@ This file is the handoff context for future Codex sessions. Read it before start
 - Run a specific scene:
   - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false -Dscene=TaylorsScene`
   - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false -Dscene=TexScene`
+- List discoverable scenes:
+  - `./gradlew listScenes`
+- Run a discovered scene directly:
+  - `./gradlew runTestScene`

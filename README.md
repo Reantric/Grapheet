@@ -42,6 +42,20 @@ Scene override example:
 ./gradlew -Dscene=TexScene runWindowed
 ```
 
+List discoverable scene classes:
+
+```sh
+./gradlew listScenes
+```
+
+Run a scene directly from the Gradle task list:
+
+```sh
+./gradlew runTestScene
+```
+
+Per-scene dev run tasks are generated automatically from `src/directions/scenes/*Scene.java`.
+
 Video export example:
 
 ```sh

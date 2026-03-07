@@ -15,8 +15,16 @@ public final class SceneRegistry {
     public static Director create(Applet applet) {
         return new Director(
                 applet,
-                createScene(applet, System.getProperty("scene", "TaylorsScene"))
+                createSelectedScene(applet)
         );
+    }
+
+    private static Scene createSelectedScene(Applet applet) {
+        String sceneClassName = System.getProperty("sceneClass", "").trim();
+        if (!sceneClassName.isEmpty()) {
+            return createSceneClass(applet, sceneClassName);
+        }
+        return createScene(applet, System.getProperty("scene", "TaylorsScene"));
     }
 
     private static Scene createScene(Applet applet, String sceneName) {
@@ -30,6 +38,33 @@ public final class SceneRegistry {
         throw new IllegalArgumentException(
                 "Unknown scene '" + sceneName + "'. Available scenes: TaylorsScene, TexScene"
         );
+    }
+
+    private static Scene createSceneClass(Applet applet, String sceneClassName) {
+        String resolvedClassName = sceneClassName.contains(".")
+                ? sceneClassName
+                : "directions.scenes." + sceneClassName;
+
+        Class<? extends Scene> sceneClass;
+        try {
+            sceneClass = Class.forName(resolvedClassName).asSubclass(Scene.class);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalArgumentException("Unknown scene class '" + sceneClassName + "'", e);
+        } catch (ClassCastException e) {
+            throw new IllegalArgumentException(
+                    "Scene class '" + resolvedClassName + "' does not extend directions.engine.Scene",
+                    e
+            );
+        }
+
+        try {
+            return sceneClass.getDeclaredConstructor(Applet.class).newInstance(applet);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalArgumentException(
+                    "Scene class '" + resolvedClassName + "' must expose a constructor that accepts core.Applet",
+                    e
+            );
+        }
     }
 
     private static String normalize(String sceneName) {
