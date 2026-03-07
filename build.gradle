@@ -105,12 +105,14 @@ def prependSearchPath = { String prefix, String existing ->
 def configureMainRunTask = { JavaExec task, Map defaults = [:] ->
     def options = [
             recordVideo: 'false',
+            ffmpegPath : '',
             renderer   : 'JAVA2D',
             fullscreen : 'true',
             scene      : ''
     ] + defaults
 
     task.systemProperty("recordVideo", resolveSystemProperty("recordVideo", options.recordVideo))
+    task.systemProperty("ffmpegPath", resolveSystemProperty("ffmpegPath", options.ffmpegPath))
     task.systemProperty("renderer", resolveSystemProperty("renderer", options.renderer))
     task.systemProperty("fullscreen", resolveSystemProperty("fullscreen", options.fullscreen))
     task.systemProperty("scene", resolveSystemProperty("scene", options.scene))

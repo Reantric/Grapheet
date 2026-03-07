@@ -1,12 +1,21 @@
-
 library/ffmpeg.exe
 ffmpeg.txt
 
-# Ignore Gradle project-specific cache directory
-.gradle
+# Ignore project-specific IDE metadata and caches.
+.idea/
+.vscode/
+*.iml
 
-# Ignore Gradle build output directory
-build
+# Ignore Gradle project-specific cache directory
+.gradle/
+
+# Ignore build outputs and local render artifacts.
+build/
+out/
+temp/
+test/
+*.mp4
+
 .gitattributes
 
 # Ignore JVM crash logs that can capture local usernames and paths.

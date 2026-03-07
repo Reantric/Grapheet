@@ -4,8 +4,10 @@
 This file is the handoff context for future Codex sessions. Read it before starting work.
 
 ## Current Direction
-- The project is being modernized away from the legacy `directions.Scene` + `step[]` flow.
-- The new path lives under `src/directions/engine/` and `src/directions/scenes/`.
+- `main` now carries the modernization work.
+- The pre-modernization codebase is preserved by the `legacy-main` tag.
+- The project has moved away from the legacy `directions.Scene` + `step[]` flow.
+- The active path lives under `src/directions/engine/` and `src/directions/scenes/`.
 - A real legacy scene has been ported to the new engine: `src/directions/scenes/TaylorsScene.java`.
 - `TaylorsScene` no longer uses the old `Actions.legacy(...)` bridge.
 
@@ -37,8 +39,11 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `renderer`
   - `fullscreen`
   - `recordVideo`
+  - `ffmpegPath`
+- Video export expects `ffmpeg` on `PATH` by default, and can be overridden with `-DffmpegPath=/absolute/path/to/ffmpeg`.
 - JVM crash logs are ignored via `hs_err_pid*.log`.
 - The tracked `hs_err_pid79698.log` dump was removed and scrubbed from branch history because it contained local path/user data.
+- Tracked `.gradle/`, `.idea/`, temp SVGs, test renders, and local MP4 outputs were removed from version control and added to `.gitignore`.
 
 ## Portability Fixes Already Made
 - Several Windows-only paths were converted to portable forward-slash paths:
@@ -65,7 +70,3 @@ This file is the handoff context for future Codex sessions. Read it before start
 - Run a specific scene:
   - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false -Dscene=TaylorsScene`
   - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false -Dscene=TexScene`
-
-## Worktree Cautions
-- There are unrelated tracked `.gradle/7.1/*` deletions in the worktree. Do not revert them unless the user asks.
-- There is an untracked `.vscode/` directory in the worktree. Leave it alone unless asked.

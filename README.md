@@ -1,7 +1,7 @@
 # Grapheet
 Graphing engine that can be used to visualize data and do fun stuff with math!
 
-`modernise` is the branch to keep working in. The old `mac` branch was a temporary Apple Silicon bring-up path; this branch now runs on macOS directly.
+`main` is the active branch. The pre-modernization codebase is preserved by the `legacy-main` tag.
 
 ## Requirements
 
@@ -47,3 +47,6 @@ Video export example:
 ```sh
 ./gradlew -DrecordVideo=true runWindowed
 ```
+
+Video export requires `ffmpeg` to be available on `PATH`.
+If needed, pass `-DffmpegPath=/absolute/path/to/ffmpeg`.

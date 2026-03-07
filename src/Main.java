@@ -27,6 +27,10 @@ public class Main extends Applet {
         recordVideo = Boolean.getBoolean("recordVideo");
         if (recordVideo) {
             videoExport = new VideoExport(this, "taylors.mp4");
+            String ffmpegPath = System.getProperty("ffmpegPath", "").trim();
+            if (!ffmpegPath.isEmpty()) {
+                videoExport.setFfmpegPath(ffmpegPath);
+            }
             videoExport.setQuality(85, 0);
             videoExport.setFrameRate(60);
             videoExport.startMovie();

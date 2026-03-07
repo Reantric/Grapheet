@@ -47,5 +47,5 @@
     "-2",
     "[output]"
   ],
-  "ffmpeg_path": "/usr/bin/ffmpeg"
+  "ffmpeg_path": "ffmpeg"
 }
