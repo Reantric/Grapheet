@@ -31,6 +31,10 @@ This file is the handoff context for future Codex sessions. Read it before start
 - That run completed successfully and printed `Goodbye`.
 - `JAVA2D` is the currently verified renderer path.
 - `P2D` still needs a renderer compatibility pass before it should be trusted on Linux.
+- On this macOS machine, `brew install openjdk@21` was required because the Apple `/usr/bin/java` launcher had no registered JDK.
+- Homebrew `openjdk@21` is keg-only here, so future terminal sessions may need:
+  - `export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`
+  - `export PATH=/opt/homebrew/opt/openjdk@21/bin:$PATH`
 
 ## Build / Tooling Notes
 - `build.gradle` now targets Java 21 instead of Java 25.
@@ -41,6 +45,7 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `recordVideo`
   - `ffmpegPath`
 - Video export expects `ffmpeg` on `PATH` by default, and can be overridden with `-DffmpegPath=/absolute/path/to/ffmpeg`.
+- SVG export now creates parent directories automatically, so `temp/` can stay ignored and untracked.
 - JVM crash logs are ignored via `hs_err_pid*.log`.
 - The tracked `hs_err_pid79698.log` dump was removed and scrubbed from branch history because it contained local path/user data.
 - Tracked `.gradle/`, `.idea/`, temp SVGs, test renders, and local MP4 outputs were removed from version control and added to `.gitignore`.

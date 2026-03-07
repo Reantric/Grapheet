@@ -24,6 +24,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 public class SVGConverter {
 
@@ -64,14 +66,18 @@ public class SVGConverter {
             ((Element) eq.getChildNodes().item(i)).setAttribute("id", String.valueOf(i));
         }
         try {
+            Path outputPath = Path.of(file);
+            Path parent = outputPath.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
             FileOutputStream svgs = new FileOutputStream(file);
             Writer out = new OutputStreamWriter(svgs, StandardCharsets.UTF_8);
             g2.stream(root, out, true, false);
             svgs.flush();
             svgs.close();
         } catch (IOException e) {
-            System.out.println("hey buddy there's an error here fix it");
-            e.printStackTrace();
+            throw new RuntimeException("Failed to write SVG to " + file, e);
         }
         return true;
     }
