@@ -81,6 +81,45 @@ public class Color implements Interpolatable<Color> {
         this(0, 100, 100, 100);
     }
 
+    public static Color fromCss(String css) {
+        Objects.requireNonNull(css, "css");
+
+        String hex = css.startsWith("#") ? css.substring(1) : css;
+        int red;
+        int green;
+        int blue;
+        int alpha = 255;
+
+        switch (hex.length()) {
+            case 3 -> {
+                red = parseShortHexChannel(hex.charAt(0), css);
+                green = parseShortHexChannel(hex.charAt(1), css);
+                blue = parseShortHexChannel(hex.charAt(2), css);
+            }
+            case 4 -> {
+                red = parseShortHexChannel(hex.charAt(0), css);
+                green = parseShortHexChannel(hex.charAt(1), css);
+                blue = parseShortHexChannel(hex.charAt(2), css);
+                alpha = parseShortHexChannel(hex.charAt(3), css);
+            }
+            case 6 -> {
+                red = parseHexChannel(hex, 0, css);
+                green = parseHexChannel(hex, 2, css);
+                blue = parseHexChannel(hex, 4, css);
+            }
+            case 8 -> {
+                red = parseHexChannel(hex, 0, css);
+                green = parseHexChannel(hex, 2, css);
+                blue = parseHexChannel(hex, 4, css);
+                alpha = parseHexChannel(hex, 6, css);
+            }
+            default -> throw new IllegalArgumentException("Unsupported CSS color: " + css);
+        }
+
+        float[] hsb = java.awt.Color.RGBtoHSB(red, green, blue, null);
+        return new Color(hsb[0] * 360f, hsb[1] * 100f, hsb[2] * 100f, alpha * 100f / 255f);
+    }
+
     public Color(Subcolor hue, Subcolor saturation, Subcolor brightness, Subcolor alpha) {
         this.hue = hue;
         this.saturation = saturation;
@@ -174,5 +213,20 @@ public class Color implements Interpolatable<Color> {
     public boolean getInterpolationStatus() {
         return this.interpStatus;
     }
-}
 
+    private static int parseShortHexChannel(char digit, String css) {
+        int value = Character.digit(digit, 16);
+        if (value < 0) {
+            throw new IllegalArgumentException("Unsupported CSS color: " + css);
+        }
+        return value * 17;
+    }
+
+    private static int parseHexChannel(String hex, int start, String css) {
+        try {
+            return Integer.parseInt(hex.substring(start, start + 2), 16);
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException("Unsupported CSS color: " + css, ex);
+        }
+    }
+}
