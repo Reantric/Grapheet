@@ -47,6 +47,26 @@ public abstract class Scene {
         return p;
     }
 
+    protected final float viewportWidth() {
+        return applet().width;
+    }
+
+    protected final float viewportHeight() {
+        return applet().height;
+    }
+
+    protected final float halfViewportWidth() {
+        return viewportWidth() / 2f;
+    }
+
+    protected final float halfViewportHeight() {
+        return viewportHeight() / 2f;
+    }
+
+    protected final Easing defaultEasing() {
+        return MotionDefaults.STANDARD;
+    }
+
     final boolean tick(SceneContext ctx) {
         ensureBuilt();
         for (Updater updater : updaters) {

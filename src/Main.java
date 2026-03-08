@@ -1,12 +1,12 @@
 import com.hamoid.VideoExport;
 import core.Applet;
+import core.RenderConfig;
 import directions.SceneRegistry;
 import directions.engine.Director;
 import processing.core.PApplet;
 import processing.core.PFont;
 import processing.event.MouseEvent;
 
-import static geom.Grid.*;
 import static processing.core.PConstants.ROUND;
 
 public class Main extends Applet {
@@ -49,13 +49,13 @@ public class Main extends Applet {
             if (useFullscreen) {
                 fullScreen(P2D);
             } else {
-                size(WIDTH, HEIGHT, P2D);
+                size(RenderConfig.DEFAULT_WIDTH, RenderConfig.DEFAULT_HEIGHT, P2D);
             }
         } else {
             if (useFullscreen) {
                 fullScreen();
             } else {
-                size(WIDTH, HEIGHT);
+                size(RenderConfig.DEFAULT_WIDTH, RenderConfig.DEFAULT_HEIGHT);
             }
         }
         smooth(8);
@@ -90,7 +90,7 @@ public class Main extends Applet {
         if (!useP2DRenderer) {
             hint(ENABLE_STROKE_PURE);
         }
-        translate(WIDTH/2f,HEIGHT/2f);
+        translate(width / 2f, height / 2f);
         background(0);
         shapeMode(CENTER);
         rectMode(CORNERS);

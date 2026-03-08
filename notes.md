@@ -18,10 +18,16 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `SceneContext`
   - `Action` and composable actions in `Actions`
   - typed tween adapters in `Values`
+- Default `Actions.tween(...)` overloads now use the shared quadratic ease-in-out in `src/directions/engine/MotionDefaults.java`
+- `Scene` now exposes viewport helpers (`viewportWidth()`, `viewportHeight()`, and half-size variants) for scene layout/animation code
 - Scene registry:
   - `src/directions/SceneRegistry.java`
 - Scene selection can be overridden with `-Dscene=...`
 - Supported scene names are the canonical class names only: `TaylorsScene`, `TexScene`
+- Dev-only scene selection can be overridden with `-DsceneClass=...`
+- `-DsceneClass=...` now preserves constructor-thrown runtime failures instead of reporting them as missing `Applet` constructors
+- Gradle auto-generates `run<SceneName>` tasks for files under `src/directions/scenes/`
+- `./gradlew listScenes` prints the currently discoverable scene task names
 
 ## Important Runtime Findings
 - `P2D` / JOGL was not stable in this Linux environment.
@@ -44,6 +50,7 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `fullscreen`
   - `recordVideo`
   - `ffmpegPath`
+  - `sceneClass`
 - Video export expects `ffmpeg` on `PATH` by default, and can be overridden with `-DffmpegPath=/absolute/path/to/ffmpeg`.
 - SVG export now creates parent directories automatically, so `temp/` can stay ignored and untracked.
 - JVM crash logs are ignored via `hs_err_pid*.log`.
@@ -57,6 +64,13 @@ This file is the handoff context for future Codex sessions. Read it before start
 
 ## Architectural Notes
 - `Grid`, `Graph`, and `ImmutableTex` now expose render/update separation, so the new engine can control orchestration cleanly.
+- Fixed windowed-size defaults now live in `src/core/RenderConfig.java`; runtime viewport math should read live `Applet.width` / `Applet.height` instead of `Grid` constants.
+- `Grid` and `Graph` no longer own global viewport constants; they derive bounds from the active canvas size.
+- `Grid`'s primary spacing API is now `gridSpacing` / `getGridSpacing()` instead of the older `incrementor` naming.
+- `Grid` camera bounds and axis-label anchoring now compute directly from `camera`; the unused `startingCamera` offset path was removed.
+- `Grid` no longer exposes its core mutable fields directly; scene code should use getters like `getGridSpacing()`, `getSpacing()`, `getTextColor()`, and `getCamera()`.
+- `Grid` no longer sets Processing text state in its constructor; it lazily creates its font and applies it during label rendering.
+- The old `Grid.draw()` convenience path has been removed; scenes should drive `Grid` animation explicitly and call `render()` for drawing.
 - `TaylorsScene` is now native to the new engine action flow.
 - `Graph` reveal now has a clean update path separate from rendering, so the scene no longer double-renders graph segments during reveal.
 - The old legacy runner, old scene tree, and old `DataGraph` / `DataGrid` classes have been removed.
@@ -75,3 +89,7 @@ This file is the handoff context for future Codex sessions. Read it before start
 - Run a specific scene:
   - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false -Dscene=TaylorsScene`
   - `./gradlew run --console=plain -Drenderer=JAVA2D -Dfullscreen=false -Dscene=TexScene`
+- List discoverable scenes:
+  - `./gradlew listScenes`
+- Run a discovered scene directly:
+  - `./gradlew runTestScene`

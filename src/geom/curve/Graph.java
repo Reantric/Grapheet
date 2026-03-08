@@ -11,7 +11,6 @@ import util.map.MapType;
 
 import java.util.function.Function;
 
-import static geom.Grid.WIDTH;
 import static processing.core.PConstants.EPSILON;
 
 public class Graph implements Interpolatable<Function<Double,Double>> { // 2D graph, fuck 3D, maybe change Interp<Func> to Interp<Graph>?
@@ -27,8 +26,9 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
     public Graph(Grid plane){
         this.plane = plane;
         configureDistance();
-        double left = plane.canvasToPlane(new Vector(-WIDTH/2f)).x;
-        this.bounds = new Vector((float) left,(float) left+WIDTH*plane.getScale().x);
+        float viewportWidth = plane.getViewportWidth();
+        double left = plane.canvasToPlane(new Vector(-viewportWidth / 2f)).x;
+        this.bounds = new Vector((float) left, (float) left + viewportWidth * plane.getScale().x);
         //System.out.println(bounds);
     }
 
@@ -59,9 +59,10 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
     }
 
     public void render() {
-        plane.p.stroke(color);
-        plane.p.strokeWeight(5);
-        plane.p.noFill();
+        var applet = plane.applet();
+        applet.stroke(color);
+        applet.strokeWeight(5);
+        applet.noFill();
 
         int lastIndex = Math.min(xValues.length - 1, Math.max(0, (int) index.x));
         boolean drawingSegment = false;
@@ -72,19 +73,19 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
 
             if (currentVisible && nextVisible) {
                 if (!drawingSegment) {
-                    plane.p.beginShape();
-                    plane.p.vertex(xValues[i], yValues[i]);
+                    applet.beginShape();
+                    applet.vertex(xValues[i], yValues[i]);
                     drawingSegment = true;
                 }
-                plane.p.vertex(xValues[i + 1], yValues[i + 1]);
+                applet.vertex(xValues[i + 1], yValues[i + 1]);
             } else if (drawingSegment) {
-                plane.p.endShape();
+                applet.endShape();
                 drawingSegment = false;
             }
         }
 
         if (drawingSegment) {
-            plane.p.endShape(PConstants.OPEN);
+            applet.endShape(PConstants.OPEN);
         }
     }
 
