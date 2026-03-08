@@ -1,5 +1,5 @@
 import processing.core.PApplet;
-import com.hamoid.VideoExport;
+import core.FfmpegRecorder;
 
 public class VerifyProcessing extends PApplet {
     private float x;
@@ -7,7 +7,7 @@ public class VerifyProcessing extends PApplet {
     private float radius = 80.0f;
     private int maxFrames;
 
-    private VideoExport videoExport;
+    private FfmpegRecorder videoRecorder;
     private boolean recordingStarted;
 
     public void settings() {
@@ -28,18 +28,18 @@ public class VerifyProcessing extends PApplet {
 
         boolean recordVideo = Boolean.getBoolean("recordVideo");
         if (recordVideo) {
-            videoExport = new VideoExport(this, "build/verifyprocessing.mp4");
             String ffmpegPath = System.getProperty("ffmpegPath", "").trim();
-            if (!ffmpegPath.isEmpty()) {
-                videoExport.setFfmpegPath(ffmpegPath);
-            } else if (!canRunFfmpegFromPath()) {
-                System.out.println("VideoExport disabled: ffmpeg not found on PATH. Install ffmpeg or pass -DffmpegPath=/path/to/ffmpeg");
-                videoExport = null;
+            if (!FfmpegRecorder.canRunFfmpeg(ffmpegPath)) {
+                System.out.println("Recording disabled: ffmpeg not found on PATH. Install ffmpeg or pass -DffmpegPath=/path/to/ffmpeg");
                 return;
             }
-            videoExport.setQuality(85, 0);
-            videoExport.setFrameRate(60);
-            videoExport.startMovie();
+            videoRecorder = new FfmpegRecorder(this, "build/verifyprocessing.mp4");
+            if (!ffmpegPath.isEmpty()) {
+                videoRecorder.setFfmpegPath(ffmpegPath);
+            }
+            videoRecorder.setQuality(85, 0);
+            videoRecorder.setFrameRate(60);
+            videoRecorder.startMovie();
             recordingStarted = true;
         }
     }
@@ -54,7 +54,7 @@ public class VerifyProcessing extends PApplet {
         drawSmiley(x, y, radius);
 
         if (recordingStarted) {
-            videoExport.saveFrame();
+            videoRecorder.saveFrame();
         }
 
         fill(30);
@@ -89,20 +89,9 @@ public class VerifyProcessing extends PApplet {
     public void exit() {
         if (recordingStarted) {
             recordingStarted = false;
-            videoExport.endMovie();
+            videoRecorder.endMovie();
         }
         super.exit();
-    }
-
-    private static boolean canRunFfmpegFromPath() {
-        try {
-            Process process = new ProcessBuilder("ffmpeg", "-version")
-                    .redirectErrorStream(true)
-                    .start();
-            return process.waitFor() == 0;
-        } catch (Exception ignored) {
-            return false;
-        }
     }
 
     public static void main(String[] args) {
