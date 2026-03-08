@@ -66,6 +66,11 @@ This file is the handoff context for future Codex sessions. Read it before start
 - `Grid`, `Graph`, and `ImmutableTex` now expose render/update separation, so the new engine can control orchestration cleanly.
 - Fixed windowed-size defaults now live in `src/core/RenderConfig.java`; runtime viewport math should read live `Applet.width` / `Applet.height` instead of `Grid` constants.
 - `Grid` and `Graph` no longer own global viewport constants; they derive bounds from the active canvas size.
+- `Grid`'s primary spacing API is now `gridSpacing` / `getGridSpacing()` instead of the older `incrementor` naming.
+- `Grid` camera bounds and axis-label anchoring now compute directly from `camera`; the unused `startingCamera` offset path was removed.
+- `Grid` no longer exposes its core mutable fields directly; scene code should use getters like `getGridSpacing()`, `getSpacing()`, `getTextColor()`, and `getCamera()`.
+- `Grid` no longer sets Processing text state in its constructor; it lazily creates its font and applies it during label rendering.
+- The old `Grid.draw()` convenience path has been removed; scenes should drive `Grid` animation explicitly and call `render()` for drawing.
 - `TaylorsScene` is now native to the new engine action flow.
 - `Graph` reveal now has a clean update path separate from rendering, so the scene no longer double-renders graph segments during reveal.
 - The old legacy runner, old scene tree, and old `DataGraph` / `DataGrid` classes have been removed.

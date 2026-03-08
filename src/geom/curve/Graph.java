@@ -59,9 +59,10 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
     }
 
     public void render() {
-        plane.p.stroke(color);
-        plane.p.strokeWeight(5);
-        plane.p.noFill();
+        var applet = plane.applet();
+        applet.stroke(color);
+        applet.strokeWeight(5);
+        applet.noFill();
 
         int lastIndex = Math.min(xValues.length - 1, Math.max(0, (int) index.x));
         boolean drawingSegment = false;
@@ -72,19 +73,19 @@ public class Graph implements Interpolatable<Function<Double,Double>> { // 2D gr
 
             if (currentVisible && nextVisible) {
                 if (!drawingSegment) {
-                    plane.p.beginShape();
-                    plane.p.vertex(xValues[i], yValues[i]);
+                    applet.beginShape();
+                    applet.vertex(xValues[i], yValues[i]);
                     drawingSegment = true;
                 }
-                plane.p.vertex(xValues[i + 1], yValues[i + 1]);
+                applet.vertex(xValues[i + 1], yValues[i + 1]);
             } else if (drawingSegment) {
-                plane.p.endShape();
+                applet.endShape();
                 drawingSegment = false;
             }
         }
 
         if (drawingSegment) {
-            plane.p.endShape(PConstants.OPEN);
+            applet.endShape(PConstants.OPEN);
         }
     }
 
