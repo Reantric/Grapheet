@@ -270,7 +270,7 @@ public final class DataGrid {
         float plotRight = plotLeft + plotWidth;
         float plotBottom = plotTop + plotHeight;
         float leftBandLeft = viewportLeft;
-        float leftBandRight = plotLeft - LABEL_BAND_GAP;
+        float leftBandRight = leftBandRight();
         float bottomBandTop = plotBottom + LABEL_BAND_GAP;
         float bottomBandBottom = p.height / 2f;
 
@@ -434,16 +434,18 @@ public final class DataGrid {
         if (currentCollapseProgress <= 0f) {
             return 1f;
         }
-        if (fadeWidthPx <= 0f) {
+
+        float fadeEnd = leftBandRight();
+        float fadeLead = Math.max(12f, Math.min(48f, fadeWidthPx * 0.35f));
+        float fadeStart = plotLeft + fadeLead;
+
+        if (x >= fadeStart) {
             return 1f;
         }
-        if (x >= plotLeft) {
-            return 1f;
-        }
-        if (x <= plotLeft - fadeWidthPx) {
+        if (x <= fadeEnd) {
             return 0f;
         }
-        return 1f - (plotLeft - x) / fadeWidthPx;
+        return (x - fadeEnd) / (fadeStart - fadeEnd);
     }
 
     private void drawWorldYAxis(float plotBottom) {
@@ -536,6 +538,10 @@ public final class DataGrid {
 
     private boolean isAxisLineValue(double value) {
         return Math.abs(cleanZero(value - xAnchor)) < 1e-4;
+    }
+
+    private float leftBandRight() {
+        return plotLeft - LABEL_BAND_GAP;
     }
 
     private float yLabelX() {
