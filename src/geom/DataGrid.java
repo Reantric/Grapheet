@@ -11,14 +11,18 @@ import java.util.function.DoubleFunction;
 
 public final class DataGrid {
     private static final double EPSILON = 1e-6;
+    // Gap between the plot edge and the dark label band fills.
     private static final float LABEL_BAND_GAP = 14f;
+    // Extra breathing room added when the left rail collapses to its pinned width.
     private static final float SLIM_RAIL_PADDING = 16f;
 
     private final Applet p;
     private final DecimalFormat numberFormat = new DecimalFormat("0.##");
 
-    private PFont font;
+    private PFont fontMajor, fontMinor;
 
+    // Plot margins in screen pixels. `leftInset` is the full starting left rail width before
+    // the follow motion collapses it down to the slimmer pinned-label rail.
     private float leftInset = 150f;
     private float topInset = 72f;
     private float rightInset = 88f;
@@ -36,11 +40,14 @@ public final class DataGrid {
     private double yMin = 800;
     private double yMax = 1800;
 
+    // Anchors phase-lock the repeating grid families to domain space: anchor + n * step.
     private double xAnchor = 0;
     private double yAnchor = 0;
+    // Major grid spacing in domain units. Larger values produce fewer, farther-apart lines.
     private double xMajorStep = 3;
     private double yMajorStep = 100;
 
+    // Number of slices inside each major gap. 2 means one midpoint minor family between majors.
     private int xMinorDivisions = 2;
     private int yMinorDivisions = 2;
 
@@ -57,10 +64,13 @@ public final class DataGrid {
     private float axisStroke = 5f;
     private float majorGridStroke = 2.75f;
     private float minorGridStroke = 1.5f;
-    private float majorLabelSize = 34f;
-    private float minorLabelSize = 30f;
+    private float majorLabelSize = 40f;
+    private float minorLabelSize = 34f;
+    // Distance from the bottom plot edge to the X-axis labels.
     private float xLabelInset = 40f;
-    private float yLabelInset = 18f;
+    // Distance from the left plot edge / Y-axis line to the right edge of the Y labels.
+    private float yLabelInset = 28f;
+    // Extra grid/axis draw length past the top/right plot bounds so the frame does not clip early.
     private float topGridOverscan = 112f;
     private float rightGridOverscan = 116f;
 
@@ -70,6 +80,8 @@ public final class DataGrid {
 
     public DataGrid(Applet window) {
         this.p = window;
+        fontMajor = requireFont(window.getLatoFont(), "major");
+        fontMinor = requireFont(window.getLatoFont(), "minor");
     }
 
     public void render() {
@@ -81,9 +93,12 @@ public final class DataGrid {
         drawMinorGrid();
         drawMajorGrid();
         if (showAxisBackgroundStrips) {
-            drawLabelBands();
+            drawBottomLabelBand();
         }
         drawAxes();
+        if (showAxisBackgroundStrips) {
+            drawLeftLabelRail();
+        }
         if (showLabels) {
             drawLabels();
         }
@@ -266,25 +281,30 @@ public final class DataGrid {
         p.line(plotLeft, plotBottom, plotRight + rightGridOverscan, plotBottom);
     }
 
-    private void drawLabelBands() {
+    private void drawBottomLabelBand() {
         float plotRight = plotLeft + plotWidth;
         float plotBottom = plotTop + plotHeight;
-        float leftBandLeft = viewportLeft;
-        float leftBandRight = leftBandRight();
         float bottomBandTop = plotBottom + LABEL_BAND_GAP;
         float bottomBandBottom = p.height / 2f;
 
         p.noStroke();
         p.fill(labelBackgroundColor);
-        p.rect(leftBandLeft, plotTop - topGridOverscan, leftBandRight, plotBottom);
         p.rect(plotLeft, bottomBandTop, plotRight + rightGridOverscan, bottomBandBottom);
     }
 
-    private void drawLabels() {
-        ensureFont();
-        p.textFont(font);
-        p.noStroke();
+    // Draw the pinned left rail after the world-space axis so the panel can cover that axis
+    // cleanly once follow motion starts collapsing the chart toward the screen edge.
+    private void drawLeftLabelRail() {
+        float plotBottom = plotTop + plotHeight;
 
+        p.noStroke();
+        //p.fill(labelBackgroundColor);
+        p.fill(ColorType.RED); // TODO: add a debug option to colour various background elements in different colours
+        p.rect(viewportLeft, plotTop - topGridOverscan, leftRailCoverRight(), plotBottom);
+    }
+
+    private void drawLabels() {
+        p.noStroke();
         drawMinorYLabels();
         drawMinorXLabels();
         drawYLabels();
@@ -292,6 +312,7 @@ public final class DataGrid {
     }
 
     private void drawYLabels() {
+        p.textFont(fontMajor);
         p.textSize(majorLabelSize);
         p.fill(labelColor);
         p.textAlign(Applet.RIGHT, Applet.CENTER);
@@ -320,6 +341,7 @@ public final class DataGrid {
             return;
         }
 
+        p.textFont(fontMinor);
         p.textSize(minorLabelSize);
         p.fill(minorLabelColor);
         p.textAlign(Applet.RIGHT, Applet.CENTER);
@@ -348,11 +370,11 @@ public final class DataGrid {
         drawXLabelsForStep(xMajorStep / xMinorDivisions, xMajorStep, minorLabelSize, minorLabelColor);
     }
 
-    private void ensureFont() {
-        if (font == null) {
-            font = p.createFont("src/data/cmunbmr.ttf", 150, true);
-        }
+    public void setFonts(PFont major, PFont minor) {
+        this.fontMajor = requireFont(major, "major");
+        this.fontMinor = requireFont(minor, "minor");
     }
+
 
     private String formatDefaultLabel(double value) {
         return numberFormat.format(cleanZero(value));
@@ -380,24 +402,22 @@ public final class DataGrid {
             return minRailWidth;
         }
 
-        ensureFont();
-        p.textFont(font);
-
-        float maxLabelWidth = maxVisibleYLabelWidth(yMajorStep, Double.NaN, majorLabelSize);
+        float maxLabelWidth = maxVisibleYLabelWidth(fontMajor, yMajorStep, Double.NaN, majorLabelSize);
         if (showMinorGrid) {
             maxLabelWidth = Math.max(
                     maxLabelWidth,
-                    maxVisibleYLabelWidth(yMajorStep / yMinorDivisions, yMajorStep, minorLabelSize)
+                    maxVisibleYLabelWidth(fontMinor, yMajorStep / yMinorDivisions, yMajorStep, minorLabelSize)
             );
         }
         return Math.max(minRailWidth, maxLabelWidth + yLabelInset + SLIM_RAIL_PADDING);
     }
 
-    private float maxVisibleYLabelWidth(double step, double skipAlignedStep, float textSize) {
+    private float maxVisibleYLabelWidth(PFont font, double step, double skipAlignedStep, float textSize) {
         if (step <= 0) {
             return 0f;
         }
 
+        p.textFont(font);
         p.textSize(textSize);
         float maxWidth = 0f;
         double first = firstLineAtOrAfter(yMin, yAnchor, step);
@@ -435,7 +455,7 @@ public final class DataGrid {
             return 1f;
         }
 
-        float fadeEnd = leftBandRight();
+        float fadeEnd = leftRailCoverRight();
         float fadeLead = Math.max(12f, Math.min(48f, fadeWidthPx * 0.35f));
         float fadeStart = plotLeft + fadeLead;
 
@@ -463,6 +483,7 @@ public final class DataGrid {
             return;
         }
 
+        p.textFont(Double.isNaN(skipAlignedStep) ? fontMajor : fontMinor);
         p.textSize(textSize);
         p.textAlign(Applet.CENTER, Applet.CENTER);
         float labelY = plotTop + plotHeight + xLabelInset;
@@ -505,6 +526,10 @@ public final class DataGrid {
         return leftVerticalFadeFactor(x, fadeWidthPx);
     }
 
+    private PFont requireFont(PFont font, String role) {
+        return Objects.requireNonNull(font, "DataGrid " + role + " font has not been configured");
+    }
+
     private void strokeWithAlpha(Color color, float alphaFactor) {
         p.stroke(
                 color.getHue().getValue(),
@@ -540,8 +565,8 @@ public final class DataGrid {
         return Math.abs(cleanZero(value - xAnchor)) < 1e-4;
     }
 
-    private float leftBandRight() {
-        return plotLeft - LABEL_BAND_GAP;
+    private float leftRailCoverRight() {
+        return plotLeft + axisStroke * 0.5f - 20f; // ?
     }
 
     private float yLabelX() {

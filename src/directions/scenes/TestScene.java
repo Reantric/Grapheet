@@ -34,8 +34,8 @@ public final class TestScene extends Scene {
         grid = new DataGrid(applet());
         grid.setDomain(INITIAL_X_MIN, INITIAL_X_MIN + VISIBLE_X_SPAN, Y_MIN, Y_MAX);
         grid.setAnchor(0, Y_MIN);
-        grid.setXMajorStep(3);
-        grid.setYMajorStep(150);
+        grid.setXMajorStep(4);
+        grid.setYMajorStep(250);
         grid.setMinorDivisions(2, 2);
     }
 

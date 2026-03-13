@@ -71,6 +71,7 @@ This file is the handoff context for future Codex sessions. Read it before start
 
 ## Architectural Notes
 - `Grid`, `Graph`, and `ImmutableTex` now expose render/update separation, so the new engine can control orchestration cleanly.
+- Shared app fonts now live on `core.Applet`; `Main` initializes them once via `setSharedFonts(...)`, and scene-owned components can read defaults like `getLatoFont()` / `getLatoBoldFont()` from the passed applet instead of importing from `Main`.
 - Fixed windowed-size defaults now live in `src/core/RenderConfig.java`; runtime viewport math should read live `Applet.width` / `Applet.height` instead of `Grid` constants.
 - `Grid` and `Graph` no longer own global viewport constants; they derive bounds from the active canvas size.
 - A new chart-specific `src/geom/DataGrid.java` now exists again, but it is a fresh first-quadrant renderer for data charts, not the removed legacy `DataGrid`.
@@ -85,6 +86,8 @@ This file is the handoff context for future Codex sessions. Read it before start
 - `DataGrid` now derives a smooth left-rail collapse from `xMin` relative to `xAnchor`, auto-sizes the slim pinned y-label rail from the currently visible y-label widths, and expands the plot leftward as follow begins instead of leaving a fixed empty gutter.
 - `DataGrid` now renders the y-axis as the world-space vertical line at `xAnchor`, fades that line as it exits through the collapsing left rail, and applies matching alpha to x-labels for fading vertical lines, including the returning `0` label under the moving axis.
 - `DataGrid` now fades the world-space y-axis and matching `0` x-label through a short handoff zone and fully removes them before they enter the pinned left label band, while preserving the left-rail collapse motion that slides the plot and labels left into place.
+- `DataGrid` now renders the bottom label band before the axes but draws the left label rail after the axes, so the pinned left panel behaves like a cover mask and hides the moving world-space y-axis as that axis exits into the rail.
+- `DataGrid` now defaults its major/minor label fonts from the owning applet's shared Lato font and still allows per-grid overrides through `setFonts(...)`; the old lazy internal font creation path is gone.
 - `Grid`'s primary spacing API is now `gridSpacing` / `getGridSpacing()` instead of the older `incrementor` naming.
 - `Grid` camera bounds and axis-label anchoring now compute directly from `camera`; the unused `startingCamera` offset path was removed.
 - `Grid` no longer exposes its core mutable fields directly; scene code should use getters like `getGridSpacing()`, `getSpacing()`, `getTextColor()`, and `getCamera()`.
