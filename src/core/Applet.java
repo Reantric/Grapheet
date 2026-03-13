@@ -1,6 +1,7 @@
 package core;
 
 import processing.core.PApplet;
+import processing.core.PFont;
 import processing.core.PShape;
 import processing.core.PVector;
 import storage.Color;
@@ -9,6 +10,33 @@ import storage.Vector;
 
 
 public class Applet extends PApplet {
+    private PFont myFont;
+    private PFont italicsFont;
+    private PFont latoFont;
+    private PFont latoBoldFont;
+
+    public void setSharedFonts(PFont myFont, PFont italicsFont, PFont latoFont, PFont latoBoldFont) {
+        this.myFont = myFont;
+        this.italicsFont = italicsFont;
+        this.latoFont = latoFont;
+        this.latoBoldFont = latoBoldFont;
+    }
+
+    public PFont getMyFont() {
+        return myFont;
+    }
+
+    public PFont getItalicsFont() {
+        return italicsFont;
+    }
+
+    public PFont getLatoFont() {
+        return latoFont;
+    }
+
+    public PFont getLatoBoldFont() {
+        return latoBoldFont;
+    }
 
     public void stroke(Color color){
         this.stroke(color.getHue().getValue(), color.getSaturation().getValue(), color.getBrightness().getValue(), color.getAlpha().getValue());

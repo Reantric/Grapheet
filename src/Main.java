@@ -1,39 +1,45 @@
-import com.hamoid.VideoExport;
 import core.Applet;
+import core.FfmpegRecorder;
 import core.RenderConfig;
 import directions.SceneRegistry;
 import directions.engine.Director;
 import processing.core.PApplet;
-import processing.core.PFont;
 import processing.event.MouseEvent;
 
-import static processing.core.PConstants.ROUND;
-
 public class Main extends Applet {
-    public static PFont myFont, italics;
     private static float zoom = 1f;
-    public VideoExport videoExport;
+    private FfmpegRecorder videoRecorder;
     private boolean recordVideo;
     private Director director;
     private boolean useP2DRenderer;
     private boolean useFullscreen;
+    private boolean holdOnFinish;
+    private boolean finishReported;
+    private boolean movieClosed;
 
     public void setup(){
         String commonPath = "src/data/";
-        myFont = createFont(commonPath + "cmunbmr.ttf", 150, true);
-        italics = createFont(commonPath + "cmunbmo.ttf", 150, true);
+        setSharedFonts(
+                createFont(commonPath + "cmunbmr.ttf", 150, true),
+                createFont(commonPath + "cmunbmo.ttf", 150, true),
+                createFont(commonPath + "Lato-Regular.ttf", 150, true),
+                createFont(commonPath + "Lato-Bold.ttf", 150, true)
+        );
         director = SceneRegistry.create(this);
 
         recordVideo = Boolean.getBoolean("recordVideo");
+        holdOnFinish = Boolean.getBoolean("holdOnFinish");
         if (recordVideo) {
-            videoExport = new VideoExport(this, "taylors.mp4");
+            String videoPath = resolveVideoPath();
+            videoRecorder = new FfmpegRecorder(this, videoPath);
             String ffmpegPath = System.getProperty("ffmpegPath", "").trim();
             if (!ffmpegPath.isEmpty()) {
-                videoExport.setFfmpegPath(ffmpegPath);
+                videoRecorder.setFfmpegPath(ffmpegPath);
             }
-            videoExport.setQuality(85, 0);
-            videoExport.setFrameRate(60);
-            videoExport.startMovie();
+            videoRecorder.setQuality(85, 0);
+            videoRecorder.setFrameRate(60);
+            videoRecorder.startMovie();
+            System.out.println("Recording video to " + videoPath);
         }
 
         frameRate(60);
@@ -76,11 +82,21 @@ public class Main extends Applet {
         scale(zoom);
         init();
         boolean finished = director.drawFrame();
-        if (finished){ // if all scenes finishes, terminate!
-            System.out.println("Goodbye");
-            if (recordVideo) videoExport.endMovie();
-            exit();
-        } else if (recordVideo) videoExport.saveFrame();
+        if (recordVideo) {
+            videoRecorder.saveFrame();
+        }
+
+        if (finished) {
+            if (!finishReported) {
+                System.out.println(holdOnFinish
+                        ? "Scene finished. Press q to stop recording and exit."
+                        : "Goodbye");
+                finishReported = true;
+            }
+            if (!holdOnFinish) {
+                stopRecordingAndExit();
+            }
+        }
         //saveFrame("test/line-" + frameCount + ".png");
       //  endRecord();
     }
@@ -106,8 +122,45 @@ public class Main extends Applet {
 
     public void keyPressed() {
         if (key == 'q') {
-            if (recordVideo) videoExport.endMovie();
-            exit();
+            stopRecordingAndExit();
         }
+    }
+
+    private void stopRecordingAndExit() {
+        if (recordVideo && !movieClosed) {
+            videoRecorder.endMovie();
+            movieClosed = true;
+        }
+        exit();
+    }
+
+    private static String resolveVideoPath() {
+        String configuredPath = System.getProperty("videoPath", "").trim();
+        if (!configuredPath.isEmpty()) {
+            return configuredPath;
+        }
+        return "output/" + resolveSceneName() + ".mp4";
+    }
+
+    private static String resolveSceneName() {
+        String sceneClassName = System.getProperty("sceneClass", "").trim();
+        if (!sceneClassName.isEmpty()) {
+            int separatorIndex = sceneClassName.lastIndexOf('.');
+            String simpleName = separatorIndex >= 0
+                    ? sceneClassName.substring(separatorIndex + 1)
+                    : sceneClassName;
+            return sanitizePathSegment(simpleName);
+        }
+
+        String sceneName = System.getProperty("scene", "TaylorsScene").trim();
+        if (sceneName.isEmpty()) {
+            return "TaylorsScene";
+        }
+        return sanitizePathSegment(sceneName);
+    }
+
+    private static String sanitizePathSegment(String rawValue) {
+        String sanitized = rawValue.replaceAll("[^A-Za-z0-9._-]", "_");
+        return sanitized.isEmpty() ? "scene" : sanitized;
     }
 }
