@@ -69,7 +69,8 @@ You can also override the output path with `-DvideoPath=/absolute/path/to/file.m
 ## CS2 top-players race
 
 `Cs2TopPlayersScene` animates the top CS2 players by 3-month rolling HLTV rating
-(calendar x-axis, auto-fitting y-axis, leader card, smooth label flips):
+(calendar x-axis, auto-fitting y-axis, leader header, smooth label flips;
+optional avatars via `src/data/cs2/avatars/<player>.png`):
 
 ```sh
 ./gradlew runCs2TopPlayersScene                  # full-speed (100 ms per simulated day)

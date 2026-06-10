@@ -110,19 +110,20 @@ This file is the handoff context for future Codex sessions. Read it before start
 - `DataGrid.setXCalendarAxis(LocalDate dayZero)` switches x to calendar mode:
   x values are days since `dayZero`; ticks sit on month / quarter (Jan 1,
   Apr 1, Jul 1, Oct 1) / year / 2-5-10-year boundaries and crossfade with the
-  same machinery. Jan 1 labels render as the year ("2025"), other boundaries
-  as the short month name. Quarter labels dominate at a ~15-month window,
-  years take over on zoom-out.
+  same machinery. Labels render as full reference-style dates ("Dec 1, 2013").
+  Quarter labels dominate at a ~1-year window, years take over on zoom-out.
 - `util/Pchip.java`: monotone (Fritsch-Carlson / MATLAB-style) piecewise cubic
   Hermite interpolation, used to evaluate rating curves smoothly between
   weekly rolling-average knots. Clamped outside the knot range.
 - `directions/scenes/Cs2TopPlayersScene.java`: animated race of top CS2
   players by 3-month rolling HLTV rating. Camera follows the head through a
-  450-day window, then eases out to the full range. Includes per-line head
-  labels with collision-resolved smooth flips on overtakes, a top-left
-  "CURRENT #1" card (name/team/rating/days on top), and a top-right simulated
-  date readout. `-DmsPerDay=N` controls playback speed (default 100; the
-  user's original suggestion of 250 also works, just slower).
+  365-day window, then eases out to the full range. Per-line "Name (rating)"
+  head labels sit to the right of the moving dots with collision-resolved
+  smooth flips on overtakes. Top-left shows a reference-style header
+  ("Leader:  Name (rating)" + "For N days (~Y.YY years)"), top-right a
+  two-line "Current Date:" readout. Optional avatar thumbnails: drop
+  `src/data/cs2/avatars/<player>.png` and they appear in the head labels and
+  leader header. `-DmsPerDay=N` controls playback speed (default 100).
 - Data pipeline: `src/data/cs2/top_players_rolling.csv` (player,team,color,
   date,rating weekly knots). `tools/generate_cs2_mock_data.py` produces
   realistic mock data (match-level noise -> 90-day rolling average; career
