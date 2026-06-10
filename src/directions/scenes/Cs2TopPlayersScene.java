@@ -65,6 +65,8 @@ public final class Cs2TopPlayersScene extends Scene {
      * frames and hand #1 to whoever happens to have the latest knot.
      */
     private static final double RANK_GRACE_DAYS = 45;
+    /** Alpha of the translucent panels behind the HUD blocks (2DGP look). */
+    private static final float HUD_PANEL_ALPHA = 40f;
     private static final DateTimeFormatter DATE_READOUT =
             DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH);
 
@@ -124,6 +126,8 @@ public final class Cs2TopPlayersScene extends Scene {
         tDay = 0;
         visibleXMin = 0;
         visibleXSpan = WINDOW_DAYS;
+        yShownMin = 1.0;
+        yShownMax = 1.4;
         yFitInitialised = false;
         leader = null;
         leaderSinceDay = 0;
@@ -248,8 +252,11 @@ public final class Cs2TopPlayersScene extends Scene {
         double targetMin = targetMax - span;
 
         if (!yFitInitialised) {
-            yShownMin = targetMin;
+            // Start grounded: keep the window bottom at the rating-1.0 ground
+            // line so the x axis is visible at first and then visibly falls
+            // away as the camera lifts off with the eased fit.
             yShownMax = targetMax;
+            yShownMin = Math.min(targetMin, yShownMin);
             yFitInitialised = true;
         } else {
             yShownMin = ease((float) yShownMin, (float) targetMin, dt, Y_FIT_EASE_RATE);
@@ -332,43 +339,60 @@ public final class Cs2TopPlayersScene extends Scene {
             visible.add(track);
         }
 
-        // Resolve vertical collisions on the targets, then ease the displayed
-        // positions toward them — overtakes read as a smooth label flip.
-        visible.sort(Comparator.comparingDouble(track -> track.labelTargetY));
-        for (int i = 1; i < visible.size(); i++) {
-            Track prev = visible.get(i - 1);
-            Track current = visible.get(i);
-            current.labelTargetY = Math.max(current.labelTargetY, prev.labelTargetY + LABEL_MIN_GAP_PX);
+        // The queue: labels are ranked by current rating and spread to the
+        // minimum gap in that order — first on the targets, then again on the
+        // displayed positions after easing, so two labels can never render
+        // intersecting. On an overtake the ranks swap, the pair squeezes to
+        // exactly the gap and slides past — the smooth name flip.
+        visible.sort((a, b) -> Double.compare(
+                b.spline.value(Math.min(tDay, b.lastDay)),
+                a.spline.value(Math.min(tDay, a.lastDay))));
+
+        float queueTop = plotTop + 26f;
+        float queueBottom = plotBottom - 22f;
+        float[] targets = new float[visible.size()];
+        for (int i = 0; i < visible.size(); i++) {
+            targets[i] = visible.get(i).labelTargetY;
         }
-        for (int i = visible.size() - 1; i >= 0; i--) {
-            Track current = visible.get(i);
-            float limit = i == visible.size() - 1
-                    ? plotBottom - 22f
-                    : visible.get(i + 1).labelTargetY - LABEL_MIN_GAP_PX;
-            current.labelTargetY = Math.min(current.labelTargetY, limit);
+        stackWithGaps(targets, queueTop, queueBottom);
+        for (int i = 0; i < visible.size(); i++) {
+            visible.get(i).labelTargetY = targets[i];
         }
 
-        for (Track track : visible) {
+        float[] shown = new float[visible.size()];
+        for (int i = 0; i < visible.size(); i++) {
+            Track track = visible.get(i);
             if (!track.labelInitialised) {
                 track.labelY = track.labelTargetY;
                 track.labelInitialised = true;
             } else {
                 track.labelY = ease(track.labelY, track.labelTargetY, dt, LABEL_EASE_RATE);
             }
+            shown[i] = track.labelY;
+        }
+        stackWithGaps(shown, queueTop, queueBottom);
+        for (int i = 0; i < visible.size(); i++) {
+            visible.get(i).labelY = shown[i];
+        }
 
-            // Reference style: "Name (rating)" in the line color, to the
-            // right of the head dot, with an optional avatar thumbnail.
-            String rating = String.format(Locale.ENGLISH, "%.2f",
-                    track.spline.value(Math.min(tDay, track.lastDay)));
-            String label = track.name + " (" + rating + ")";
-            p.textSize(30);
-            float labelWidth = p.textWidth(label);
+        // Uniform columns: every label reserves the same avatar slot and the
+        // right-edge clamp uses the widest label, so the cluster left-aligns
+        // instead of each row sitting at its own slightly-offset x.
+        p.textSize(30);
+        boolean anyAvatar = false;
+        float maxLabelWidth = 0f;
+        for (Track track : visible) {
+            maxLabelWidth = Math.max(maxLabelWidth, p.textWidth(headLabelText(track)));
+            anyAvatar |= avatarFor(track) != null;
+        }
+        float avatarSpace = anyAvatar ? 40f : 0f;
+        float clampX = plotRight - maxLabelWidth - avatarSpace - 12f;
+
+        for (Track track : visible) {
+            String label = headLabelText(track);
+            float x = Math.min(track.labelHeadX + 16f, clampX);
+
             PImage avatar = avatarFor(track);
-            float avatarSpace = avatar != null ? 40f : 0f;
-
-            float x = track.labelHeadX + 16f;
-            x = Math.min(x, plotRight - labelWidth - avatarSpace - 12f);
-
             if (avatar != null) {
                 p.tint(0, 0, 100, 100f * track.labelAlpha);
                 p.image(avatar, x, track.labelY - 17f, 34f, 34f);
@@ -382,6 +406,28 @@ public final class Cs2TopPlayersScene extends Scene {
             p.text(label, x + avatarSpace + 2f, track.labelY + 2f);
             fillTrack(track, 100f * track.labelAlpha);
             p.text(label, x + avatarSpace, track.labelY);
+        }
+    }
+
+    /** Reference style: {@code Name (1.31)} in the line color. */
+    private String headLabelText(Track track) {
+        return track.name + " (" + String.format(Locale.ENGLISH, "%.2f",
+                track.spline.value(Math.min(tDay, track.lastDay))) + ")";
+    }
+
+    /**
+     * Spread queue positions downward to at least the minimum gap, then pull
+     * everything back up if the stack overflowed the bottom bound.
+     */
+    private static void stackWithGaps(float[] ys, float top, float bottom) {
+        for (int i = 0; i < ys.length; i++) {
+            ys[i] = Math.max(ys[i], i == 0 ? top : ys[i - 1] + LABEL_MIN_GAP_PX);
+        }
+        if (ys.length > 0 && ys[ys.length - 1] > bottom) {
+            ys[ys.length - 1] = bottom;
+            for (int i = ys.length - 2; i >= 0; i--) {
+                ys[i] = Math.min(ys[i], ys[i + 1] - LABEL_MIN_GAP_PX);
+            }
         }
     }
 
@@ -401,28 +447,42 @@ public final class Cs2TopPlayersScene extends Scene {
         float x = grid.getPlotLeft() + 28f;
         float y = -halfViewportHeight() + 24f;
 
-        p.noStroke();
-        p.textAlign(Applet.LEFT, Applet.TOP);
-        p.textSize(48);
-        p.fill(0, 0, 100, 100);
         String prefix = "Leader:  ";
-        p.text(prefix, x, y);
-        float nameX = x + p.textWidth(prefix);
-
-        PImage avatar = avatarFor(leader);
-        if (avatar != null) {
-            p.image(avatar, nameX, y - 6f, 88f, 88f);
-            nameX += 88f + 20f;
-        }
-
         String rating = String.format(Locale.ENGLISH, "%.2f", leader.spline.value(tDay));
-        p.textSize(48);
-        p.fill(0, 0, 100, 100);
-        p.text(leader.name + " (" + rating + ")", nameX, y);
-
+        String title = leader.name + " (" + rating + ")";
         int days = (int) Math.max(0, Math.floor(tDay - leaderSinceDay));
         String tenure = "For " + days + (days == 1 ? " day" : " days")
                 + String.format(Locale.ENGLISH, " (~%.2f years)", days / 365.25);
+
+        PImage avatar = avatarFor(leader);
+        float avatarWidth = avatar != null ? 88f + 20f : 0f;
+        p.textSize(48);
+        float prefixWidth = p.textWidth(prefix);
+        float titleWidth = p.textWidth(title);
+        p.textSize(36);
+        float tenureWidth = p.textWidth(tenure);
+        float contentWidth = prefixWidth + avatarWidth + Math.max(titleWidth, tenureWidth);
+
+        // 2DGP-style translucent backing panel.
+        p.noStroke();
+        p.fill(0, 0, 0, HUD_PANEL_ALPHA);
+        p.rect(x - 18f, y - 12f, x + contentWidth + 18f, y + 106f);
+
+        p.textAlign(Applet.LEFT, Applet.TOP);
+        p.textSize(48);
+        p.fill(0, 0, 100, 100);
+        p.text(prefix, x, y);
+        float nameX = x + prefixWidth;
+
+        if (avatar != null) {
+            p.image(avatar, nameX, y - 6f, 88f, 88f);
+            nameX += avatarWidth;
+        }
+
+        p.textSize(48);
+        p.fill(0, 0, 100, 100);
+        p.text(title, nameX, y);
+
         p.textSize(36);
         p.fill(0, 0, 92, 96);
         p.text(tenure, nameX, y + 58f);
@@ -434,17 +494,28 @@ public final class Cs2TopPlayersScene extends Scene {
         p.textFont(font);
 
         LocalDate date = dayZero.plusDays((long) Math.floor(Math.min(tDay, endDay)));
+        String dateText = DATE_READOUT.format(date);
         float rightX = halfViewportWidth() - 48f;
         float topY = -halfViewportHeight() + 24f;
 
+        p.textSize(48);
+        float headingWidth = p.textWidth("Current Date:");
+        p.textSize(41);
+        float dateWidth = p.textWidth(dateText);
+        float panelLeft = rightX - Math.max(headingWidth, dateWidth) - 18f;
+
+        // 2DGP-style translucent backing panel.
         p.noStroke();
+        p.fill(0, 0, 0, HUD_PANEL_ALPHA);
+        p.rect(panelLeft, topY - 12f, rightX + 18f, topY + 112f);
+
         p.textAlign(Applet.RIGHT, Applet.TOP);
         p.textSize(48);
         p.fill(0, 0, 100, 100);
         p.text("Current Date:", rightX, topY);
         p.textSize(41);
         p.fill(0, 0, 92, 96);
-        p.text(DATE_READOUT.format(date), rightX, topY + 60f);
+        p.text(dateText, rightX, topY + 60f);
     }
 
     /**
