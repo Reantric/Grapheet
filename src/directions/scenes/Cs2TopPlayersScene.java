@@ -8,6 +8,7 @@ import directions.engine.Scene;
 import directions.engine.SceneContext;
 import geom.DataGrid;
 import processing.core.PFont;
+import processing.core.PImage;
 import storage.Color;
 import util.Pchip;
 
@@ -36,14 +37,15 @@ import java.util.Map;
  *
  * <p>Timeline: one simulated day per {@code -DmsPerDay} milliseconds
  * (default {@value #DEFAULT_MS_PER_DAY}). The camera follows the head of the
- * race through a ~15-month window, then eases out to the full date range at
- * the end. The current #1 is summarised in a card at the top left, and the
- * simulated date runs in the top right.
+ * race through a one-year window, then eases out to the full date range at
+ * the end. Top left shows a reference-style leader header, top right the
+ * simulated date. Optional avatar thumbnails are picked up from
+ * {@code src/data/cs2/avatars/<player>.png}.
  */
 public final class Cs2TopPlayersScene extends Scene {
     private static final String DATA_PATH = "src/data/cs2/top_players_rolling.csv";
     private static final double DEFAULT_MS_PER_DAY = 100;
-    private static final double WINDOW_DAYS = 450;
+    private static final double WINDOW_DAYS = 365;
     private static final double FOLLOW_THRESHOLD_RATIO = 0.78;
     private static final double FINAL_ZOOM_DELAY = 0.6;
     private static final double FINAL_ZOOM_DURATION = 5.0;
@@ -142,7 +144,7 @@ public final class Cs2TopPlayersScene extends Scene {
         addNode(Nodes.of(grid::render));
         addNode(Nodes.of(this::drawSeries));
         addNode(this::drawHeadLabels);
-        addNode(Nodes.of(this::drawLeaderCard));
+        addNode(Nodes.of(this::drawLeaderHeader));
         addNode(Nodes.of(this::drawDateReadout));
 
         return Actions.update(this::isFinished);
@@ -241,7 +243,7 @@ public final class Cs2TopPlayersScene extends Scene {
         }
 
         double span = Math.max(Y_MIN_SPAN, (max - min) / 0.62);
-        // Generous headroom up top so the race stays clear of the leader card.
+        // Generous headroom up top so the race stays clear of the leader header.
         double targetMax = max + span * 0.26;
         double targetMin = targetMax - span;
 
@@ -355,30 +357,41 @@ public final class Cs2TopPlayersScene extends Scene {
                 track.labelY = ease(track.labelY, track.labelTargetY, dt, LABEL_EASE_RATE);
             }
 
+            // Reference style: "Name (rating)" in the line color, to the
+            // right of the head dot, with an optional avatar thumbnail.
             String rating = String.format(Locale.ENGLISH, "%.3f",
                     track.spline.value(Math.min(tDay, track.lastDay)));
+            String label = track.name + " (" + rating + ")";
             p.textSize(30);
-            float nameWidth = p.textWidth(track.name);
-            p.textSize(23);
-            float ratingWidth = p.textWidth(rating);
+            float labelWidth = p.textWidth(label);
+            PImage avatar = avatarFor(track);
+            float avatarSpace = avatar != null ? 40f : 0f;
 
-            float x = track.labelHeadX + 18f;
-            x = Math.min(x, plotRight - nameWidth - ratingWidth - 24f);
+            float x = track.labelHeadX + 16f;
+            x = Math.min(x, plotRight - labelWidth - avatarSpace - 12f);
+
+            if (avatar != null) {
+                p.tint(0, 0, 100, 100f * track.labelAlpha);
+                p.image(avatar, x, track.labelY - 17f, 34f, 34f);
+                p.noTint();
+            }
 
             p.textAlign(Applet.LEFT, Applet.CENTER);
             p.noStroke();
             p.textSize(30);
             p.fill(0, 0, 0, 62f * track.labelAlpha);
-            p.text(track.name, x + 2f, track.labelY + 2f);
+            p.text(label, x + avatarSpace + 2f, track.labelY + 2f);
             fillTrack(track, 100f * track.labelAlpha);
-            p.text(track.name, x, track.labelY);
-            p.textSize(23);
-            p.fill(0, 0, 78, 88f * track.labelAlpha);
-            p.text(rating, x + nameWidth + 12f, track.labelY + 2f);
+            p.text(label, x + avatarSpace, track.labelY);
         }
     }
 
-    private void drawLeaderCard() {
+    /**
+     * Reference-style header, no card box:
+     * {@code Leader: [avatar] Name (rating)} with
+     * {@code For N days (~Y.YY years)} underneath.
+     */
+    private void drawLeaderHeader() {
         if (leader == null) {
             return;
         }
@@ -386,34 +399,34 @@ public final class Cs2TopPlayersScene extends Scene {
         ensureFont();
         p.textFont(font);
 
-        float x0 = grid.getPlotLeft() + 26f;
-        float y0 = grid.getPlotTop() + 22f;
-        float x1 = x0 + 340f;
-        float y1 = y0 + 152f;
-
-        p.fill(0, 0, 6, 80);
-        strokeTrack(leader, 85f);
-        p.strokeWeight(2.5f);
-        p.rect(x0, y0, x1, y1, 14f);
-
-        int daysOnTop = (int) Math.max(0, Math.floor(tDay - leaderSinceDay));
-        String rating = String.format(Locale.ENGLISH, "%.3f", leader.spline.value(tDay));
+        float x = grid.getPlotLeft() + 28f;
+        float y = grid.getPlotTop() + 12f;
 
         p.noStroke();
         p.textAlign(Applet.LEFT, Applet.TOP);
-        p.textSize(17);
-        p.fill(0, 0, 62, 92);
-        p.text("CURRENT #1", x0 + 22f, y0 + 14f);
-        p.textSize(44);
-        fillTrack(leader, 100f);
-        p.text(leader.name, x0 + 22f, y0 + 36f);
-        p.textSize(20);
-        p.fill(0, 0, 62, 92);
-        p.text(leader.team, x0 + 22f, y0 + 92f);
-        p.textSize(22);
-        p.fill(0, 0, 92, 96);
-        p.text("Rating " + rating + "   ·   " + daysOnTop + (daysOnTop == 1 ? " day" : " days")
-                + " on top", x0 + 22f, y0 + 120f);
+        p.textSize(48);
+        p.fill(0, 0, 100, 100);
+        String prefix = "Leader:  ";
+        p.text(prefix, x, y);
+        float nameX = x + p.textWidth(prefix);
+
+        PImage avatar = avatarFor(leader);
+        if (avatar != null) {
+            p.image(avatar, nameX, y - 6f, 88f, 88f);
+            nameX += 88f + 20f;
+        }
+
+        String rating = String.format(Locale.ENGLISH, "%.3f", leader.spline.value(tDay));
+        p.textSize(48);
+        p.fill(0, 0, 100, 100);
+        p.text(leader.name + " (" + rating + ")", nameX, y);
+
+        int days = (int) Math.max(0, Math.floor(tDay - leaderSinceDay));
+        String tenure = "For " + days + (days == 1 ? " day" : " days")
+                + String.format(Locale.ENGLISH, " (~%.2f years)", days / 365.25);
+        p.textSize(29);
+        p.fill(0, 0, 90, 94);
+        p.text(tenure, nameX, y + 60f);
     }
 
     private void drawDateReadout() {
@@ -422,11 +435,33 @@ public final class Cs2TopPlayersScene extends Scene {
         p.textFont(font);
 
         LocalDate date = dayZero.plusDays((long) Math.floor(Math.min(tDay, endDay)));
+        float rightX = halfViewportWidth() - 48f;
+        float topY = -halfViewportHeight() + 18f;
+
         p.noStroke();
         p.textAlign(Applet.RIGHT, Applet.TOP);
-        p.textSize(50);
-        p.fill(0, 0, 100, 94);
-        p.text(DATE_READOUT.format(date), halfViewportWidth() - 46f, -halfViewportHeight() + 30f);
+        p.textSize(48);
+        p.fill(0, 0, 100, 100);
+        p.text("Current Date:", rightX, topY);
+        p.textSize(41);
+        p.fill(0, 0, 92, 96);
+        p.text(DATE_READOUT.format(date), rightX, topY + 60f);
+    }
+
+    /**
+     * Optional avatar thumbnails: drop {@code src/data/cs2/avatars/<name>.png}
+     * into the repo and it shows up next to the head label and in the leader
+     * header. Missing files are simply skipped.
+     */
+    private PImage avatarFor(Track track) {
+        if (!track.avatarChecked) {
+            track.avatarChecked = true;
+            java.nio.file.Path path = java.nio.file.Path.of("src/data/cs2/avatars", track.name + ".png");
+            if (Files.exists(path)) {
+                track.avatar = applet().loadImage(path.toString());
+            }
+        }
+        return track.avatar;
     }
 
     private void strokeTrack(Track track, float alpha) {
@@ -564,6 +599,8 @@ public final class Cs2TopPlayersScene extends Scene {
         private float labelAlpha;
         private boolean labelInitialised;
         private float strokeBoost;
+        private PImage avatar;
+        private boolean avatarChecked;
 
         private Track(String name, String team, Color color,
                       List<LocalDate> dates, List<Double> ratings) {
