@@ -50,14 +50,15 @@ public final class DataGrid {
     private static final float LABEL_PLATEAU_LOG2 = 0.5f;
     private static final float LABEL_SUPPORT_LOG2 = 1.1f;
 
-    // Calendar-axis bump curves. Ideals are wider: quarter labels should
-    // dominate at the default window, years after a zoom-out.
-    private static final float DATE_GRID_IDEAL_SPACING_PX = 240f;
-    private static final float DATE_GRID_PLATEAU_LOG2 = 0.75f;
-    private static final float DATE_GRID_SUPPORT_LOG2 = 1.9f;
-    private static final float DATE_LABEL_IDEAL_SPACING_PX = 280f;
+    // Calendar-axis bump curves. Ideals are wide: full "Dec 1, 2013"-style
+    // labels need room, so quarters dominate at a ~1-year window and years
+    // take over after a zoom-out, with months/quarters fading to faint minors.
+    private static final float DATE_GRID_IDEAL_SPACING_PX = 340f;
+    private static final float DATE_GRID_PLATEAU_LOG2 = 0.6f;
+    private static final float DATE_GRID_SUPPORT_LOG2 = 1.5f;
+    private static final float DATE_LABEL_IDEAL_SPACING_PX = 430f;
     private static final float DATE_LABEL_PLATEAU_LOG2 = 0.6f;
-    private static final float DATE_LABEL_SUPPORT_LOG2 = 1.45f;
+    private static final float DATE_LABEL_SUPPORT_LOG2 = 1.5f;
 
     // Steps finer than the configured base step only fade in once the base
     // family itself has become sparse (px spacing of the base family).
@@ -424,12 +425,10 @@ public final class DataGrid {
         return new ArrayList<>(merged.values());
     }
 
+    // Full reference-style date labels: "Dec 1, 2013", "Mar 1, 2014", ...
     private static String calendarLabel(LocalDate date) {
-        if (date.getDayOfMonth() == 1 && date.getMonthValue() == 1) {
-            return String.valueOf(date.getYear());
-        }
         String month = date.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
-        return date.getDayOfMonth() == 1 ? month : month + " " + date.getDayOfMonth();
+        return month + " " + date.getDayOfMonth() + ", " + date.getYear();
     }
 
     /**
@@ -869,7 +868,7 @@ public final class DataGrid {
                 while (year.getYear() % 10 != 0) {
                     year = year.plusYears(1);
                 }
-                return year;
+                return year.plusYears(0);
             }
 
             @Override
