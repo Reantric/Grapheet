@@ -57,7 +57,7 @@ public final class DataGrid {
     // soft month minors under the quarter majors — the pre-rework feel.
     private static final float DATE_GRID_IDEAL_SPACING_PX = 340f;
     private static final float DATE_GRID_PLATEAU_LOG2 = 0.5f;
-    private static final float DATE_GRID_SUPPORT_LOG2 = 1.75f;
+    private static final float DATE_GRID_SUPPORT_LOG2 = 1.85f;
     private static final float DATE_LABEL_IDEAL_SPACING_PX = 430f;
     private static final float DATE_LABEL_PLATEAU_LOG2 = 0.6f;
     private static final float DATE_LABEL_SUPPORT_LOG2 = 1.5f;
@@ -120,6 +120,8 @@ public final class DataGrid {
     private boolean showMinorGrid = true;
     private boolean showLabels = true;
     private boolean showAxisBackgroundStrips = true;
+    private boolean railCollapseRatchet;
+    private float reachedCollapseProgress;
 
     public DataGrid(Applet window) {
         this.p = window;
@@ -218,6 +220,17 @@ public final class DataGrid {
 
     public void clearXCalendarAxis() {
         this.xCalendarDayZero = null;
+    }
+
+    /**
+     * When enabled, the left-rail collapse only ever moves forward: once the
+     * camera has followed past the y-axis, zooming back out does NOT bring
+     * the wide rail and the world y-axis line back. Calling this (with either
+     * value) also resets the ratchet state.
+     */
+    public void setRailCollapseRatchet(boolean railCollapseRatchet) {
+        this.railCollapseRatchet = railCollapseRatchet;
+        this.reachedCollapseProgress = 0f;
     }
 
     /** Overrides the default (Computer Modern) axis label font. */
@@ -519,8 +532,8 @@ public final class DataGrid {
     /** Gridline style is a continuous function of the tick's fade state. */
     private void applyGridStroke(float t, float extraFade) {
         p.strokeWeight(interpolate(minorGridStroke, majorGridStroke, t));
-        float brightness = interpolate(26f, 46f, t);
-        float alpha = interpolate(20f, 44f, t) * clamp01(t / 0.3f) * extraFade;
+        float brightness = interpolate(34f, 46f, t);
+        float alpha = interpolate(28f, 44f, t) * clamp01(t / 0.3f) * extraFade;
         p.stroke(0, 0, brightness, alpha);
     }
 
@@ -658,8 +671,12 @@ public final class DataGrid {
         if (xMajorStep <= EPSILON) {
             return 0f;
         }
-        float progress = (float) ((xMin - xAnchor) / xMajorStep);
-        return smoothstep(clamp01(progress));
+        float progress = smoothstep(clamp01((float) ((xMin - xAnchor) / xMajorStep)));
+        if (railCollapseRatchet) {
+            reachedCollapseProgress = Math.max(reachedCollapseProgress, progress);
+            return reachedCollapseProgress;
+        }
+        return progress;
     }
 
     private float slimRailWidth(List<Tick> yTicks) {
@@ -737,6 +754,11 @@ public final class DataGrid {
     }
 
     private void drawWorldYAxis(float plotBottom) {
+        // Once the rail has fully collapsed under the ratchet, the axis is
+        // gone for good — zooming back out must not redraw it at the edge.
+        if (railCollapseRatchet && currentCollapseProgress >= 1f) {
+            return;
+        }
         float x = domainToCanvasX(xAnchor);
         float alphaFactor = yAxisFadeFactor(x, xBaseGapWidthPx());
         if (alphaFactor <= 0f) {
