@@ -46,7 +46,9 @@ public final class Cs2TopPlayersScene extends Scene {
     private static final String DATA_PATH = "src/data/cs2/top_players_rolling.csv";
     private static final double DEFAULT_MS_PER_DAY = 100;
     private static final double WINDOW_DAYS = 365;
-    private static final double FOLLOW_THRESHOLD_RATIO = 0.78;
+    /** The race head rides at this fraction of the window — close to the
+     *  right edge so the dots and name labels live in the right margin. */
+    private static final double FOLLOW_THRESHOLD_RATIO = 0.86;
     private static final double FINAL_ZOOM_DELAY = 0.6;
     private static final double FINAL_ZOOM_DURATION = 5.0;
     private static final double END_HOLD_SECONDS = 4.0;
@@ -320,7 +322,6 @@ public final class Cs2TopPlayersScene extends Scene {
 
         float plotTop = grid.getPlotTop();
         float plotBottom = plotTop + grid.getPlotHeight();
-        float plotRight = grid.getPlotLeft() + grid.getPlotWidth();
         double dt = ctx.dt();
 
         // Collect visible labels with their natural (line-head) positions.
@@ -377,7 +378,9 @@ public final class Cs2TopPlayersScene extends Scene {
 
         // Uniform columns: every label reserves the same avatar slot and the
         // right-edge clamp uses the widest label, so the cluster left-aligns
-        // instead of each row sitting at its own slightly-offset x.
+        // instead of each row sitting at its own slightly-offset x. Labels may
+        // run past the plot into the right margin — only the viewport edge
+        // clips them.
         p.textSize(30);
         boolean anyAvatar = false;
         float maxLabelWidth = 0f;
@@ -386,7 +389,7 @@ public final class Cs2TopPlayersScene extends Scene {
             anyAvatar |= avatarFor(track) != null;
         }
         float avatarSpace = anyAvatar ? 40f : 0f;
-        float clampX = plotRight - maxLabelWidth - avatarSpace - 12f;
+        float clampX = halfViewportWidth() - maxLabelWidth - avatarSpace - 24f;
 
         for (Track track : visible) {
             String label = headLabelText(track);
