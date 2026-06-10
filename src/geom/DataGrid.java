@@ -41,6 +41,7 @@ public final class DataGrid {
     private static final double[] NICE_STEP_MULTIPLIERS = {1.0, 2.0, 5.0};
 
     private static final float ALPHA_EPSILON = 0.02f;
+    private static final float BOTTOM_AXIS_FALL_FADE_PX = 36f;
 
     // Numeric-axis bump curves (log2 distance from the ideal spacing).
     private static final float GRID_IDEAL_SPACING_PX = 84f;
@@ -525,8 +526,30 @@ public final class DataGrid {
         float plotBottom = plotTop + plotHeight;
         p.strokeWeight(axisStroke);
         drawWorldYAxis(plotBottom);
-        p.stroke(axisColor);
-        p.line(plotLeft, plotBottom, plotRight + rightGridOverscan, plotBottom);
+        drawWorldXAxis(plotRight);
+    }
+
+    /**
+     * The x axis is the world-space "ground" line at {@code yAnchor}, not a
+     * pinned frame edge: when the visible y-window climbs above the ground,
+     * the line slides off the bottom of the plot and dissolves, exactly like
+     * the moving y-axis exiting through the collapsing left rail.
+     */
+    private void drawWorldXAxis(float plotRight) {
+        float plotBottom = plotTop + plotHeight;
+        float y = domainToCanvasY(yAnchor);
+        if (y < plotTop - topGridOverscan) {
+            return;
+        }
+        float alphaFactor = 1f;
+        if (y > plotBottom) {
+            alphaFactor = 1f - clamp01((y - plotBottom) / BOTTOM_AXIS_FALL_FADE_PX);
+        }
+        if (alphaFactor <= 0f) {
+            return;
+        }
+        strokeWithAlpha(axisColor, alphaFactor);
+        p.line(plotLeft, y, plotRight + rightGridOverscan, y);
     }
 
     private void drawLabelBands() {
@@ -557,7 +580,7 @@ public final class DataGrid {
             if (y < plotTop - topGridOverscan - 1f) {
                 break;
             }
-            if (y > plotTop + plotHeight + 1f || isBottomAxisLabel(y)) {
+            if (y > plotTop + plotHeight + 1f || isOnWorldXAxis(y)) {
                 continue;
             }
             applyLabelStyle(t, 1f);
@@ -748,8 +771,10 @@ public final class DataGrid {
         return anchor + index * step;
     }
 
-    private boolean isBottomAxisLabel(float y) {
-        return Math.abs(y - (plotTop + plotHeight)) < 1f;
+    /** Suppress the y label that sits exactly on the (visible) ground axis. */
+    private boolean isOnWorldXAxis(float y) {
+        float axisY = domainToCanvasY(yAnchor);
+        return axisY <= plotTop + plotHeight + 1f && Math.abs(y - axisY) < 1f;
     }
 
     private boolean isLeftAxisLabel(float x) {
