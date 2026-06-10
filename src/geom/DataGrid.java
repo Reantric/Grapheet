@@ -868,7 +868,7 @@ public final class DataGrid {
                 while (year.getYear() % 10 != 0) {
                     year = year.plusYears(1);
                 }
-                return year.plusYears(0);
+                return year;
             }
 
             @Override
