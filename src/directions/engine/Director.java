@@ -33,6 +33,7 @@ public final class Director {
 
     public boolean drawFrame() {
         if (finished) {
+            renderLastScene();
             return true;
         }
 
@@ -49,6 +50,15 @@ public final class Director {
         }
 
         return finished;
+    }
+
+    private void renderLastScene() {
+        if (scenes.isEmpty()) {
+            return;
+        }
+
+        int lastSceneIndex = Math.min(sceneIndex, scenes.size() - 1);
+        scenes.get(lastSceneIndex).render(context);
     }
 
     public void reset() {

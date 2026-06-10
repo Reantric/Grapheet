@@ -61,9 +61,6 @@ dependencies {
     implementation 'org.processing:core:4.4.10'
     runtimeOnly fileTree(dir: 'library/processing', include: ['*natives-*.jar'])
 
-    // VideoExport (local jars under library/VideoExport)
-    implementation fileTree(dir: 'library/VideoExport', include: ['*.jar'])
-
     implementation group: 'org.scilab.forge', name: 'jlatexmath', version: '1.0.7'
 
     implementation group: 'org.apache.xmlgraphics', name: 'batik-transcoder', version: '1.14'
@@ -113,16 +110,20 @@ def configureMainRunTask = { JavaExec task, Map defaults = [:] ->
     def options = [
             recordVideo: 'false',
             ffmpegPath : '',
+            videoPath  : '',
             renderer   : 'JAVA2D',
             fullscreen : 'true',
+            holdOnFinish: 'false',
             scene      : '',
             sceneClass : ''
     ] + defaults
 
     task.systemProperty("recordVideo", resolveSystemProperty("recordVideo", options.recordVideo))
     task.systemProperty("ffmpegPath", resolveSystemProperty("ffmpegPath", options.ffmpegPath))
+    task.systemProperty("videoPath", resolveSystemProperty("videoPath", options.videoPath))
     task.systemProperty("renderer", resolveSystemProperty("renderer", options.renderer))
     task.systemProperty("fullscreen", resolveSystemProperty("fullscreen", options.fullscreen))
+    task.systemProperty("holdOnFinish", resolveSystemProperty("holdOnFinish", options.holdOnFinish))
     task.systemProperty("scene", resolveSystemProperty("scene", options.scene))
     task.systemProperty("sceneClass", resolveSystemProperty("sceneClass", options.sceneClass))
 }
@@ -190,11 +191,13 @@ tasks.register("listScenes") {
 discoverSceneNames().each { sceneName ->
     tasks.register("run${sceneName}", JavaExec) {
         group = "application"
-        description = "Runs ${sceneName} in a window for local development."
+        description = "Runs ${sceneName}, records to output/${sceneName}.mp4, and exits on q."
         classpath = sourceSets.main.runtimeClasspath
         mainClass.set(javaMainClass)
         configureMainRunTask(it, [
-                fullscreen: 'false',
+                recordVideo: 'true',
+                videoPath: "output/${sceneName}.mp4",
+                holdOnFinish: 'true',
                 sceneClass: "directions.scenes.${sceneName}"
         ])
     }
