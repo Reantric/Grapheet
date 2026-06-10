@@ -298,11 +298,10 @@ public final class Cs2TopPlayersScene extends Scene {
             if (headDay >= xLo && headDay <= xHi && tDay >= track.firstDay) {
                 float hx = grid.domainToCanvasX(headDay);
                 float hy = clamp(grid.domainToCanvasY(track.spline.value(headDay)), plotTop, plotBottom);
+                // Reference style: plain white head dot.
                 p.noStroke();
-                fillTrack(track, lineAlpha);
-                p.circle(hx, hy, 13f + 3f * track.strokeBoost);
                 p.fill(0, 0, 100, lineAlpha);
-                p.circle(hx, hy, 5f);
+                p.circle(hx, hy, 13f + 3f * track.strokeBoost);
             }
         }
     }
@@ -359,7 +358,7 @@ public final class Cs2TopPlayersScene extends Scene {
 
             // Reference style: "Name (rating)" in the line color, to the
             // right of the head dot, with an optional avatar thumbnail.
-            String rating = String.format(Locale.ENGLISH, "%.3f",
+            String rating = String.format(Locale.ENGLISH, "%.2f",
                     track.spline.value(Math.min(tDay, track.lastDay)));
             String label = track.name + " (" + rating + ")";
             p.textSize(30);
@@ -400,7 +399,7 @@ public final class Cs2TopPlayersScene extends Scene {
         p.textFont(font);
 
         float x = grid.getPlotLeft() + 28f;
-        float y = grid.getPlotTop() + 12f;
+        float y = -halfViewportHeight() + 24f;
 
         p.noStroke();
         p.textAlign(Applet.LEFT, Applet.TOP);
@@ -416,7 +415,7 @@ public final class Cs2TopPlayersScene extends Scene {
             nameX += 88f + 20f;
         }
 
-        String rating = String.format(Locale.ENGLISH, "%.3f", leader.spline.value(tDay));
+        String rating = String.format(Locale.ENGLISH, "%.2f", leader.spline.value(tDay));
         p.textSize(48);
         p.fill(0, 0, 100, 100);
         p.text(leader.name + " (" + rating + ")", nameX, y);
@@ -424,9 +423,9 @@ public final class Cs2TopPlayersScene extends Scene {
         int days = (int) Math.max(0, Math.floor(tDay - leaderSinceDay));
         String tenure = "For " + days + (days == 1 ? " day" : " days")
                 + String.format(Locale.ENGLISH, " (~%.2f years)", days / 365.25);
-        p.textSize(29);
-        p.fill(0, 0, 90, 94);
-        p.text(tenure, nameX, y + 60f);
+        p.textSize(36);
+        p.fill(0, 0, 92, 96);
+        p.text(tenure, nameX, y + 58f);
     }
 
     private void drawDateReadout() {
@@ -436,7 +435,7 @@ public final class Cs2TopPlayersScene extends Scene {
 
         LocalDate date = dayZero.plusDays((long) Math.floor(Math.min(tDay, endDay)));
         float rightX = halfViewportWidth() - 48f;
-        float topY = -halfViewportHeight() + 18f;
+        float topY = -halfViewportHeight() + 24f;
 
         p.noStroke();
         p.textAlign(Applet.RIGHT, Applet.TOP);
@@ -457,6 +456,10 @@ public final class Cs2TopPlayersScene extends Scene {
         if (!track.avatarChecked) {
             track.avatarChecked = true;
             java.nio.file.Path path = java.nio.file.Path.of("src/data/cs2/avatars", track.name + ".png");
+            if (!Files.exists(path)) {
+                path = java.nio.file.Path.of("src/data/cs2/avatars",
+                        track.name.toLowerCase(Locale.ROOT) + ".png");
+            }
             if (Files.exists(path)) {
                 track.avatar = applet().loadImage(path.toString());
             }
@@ -478,8 +481,30 @@ public final class Cs2TopPlayersScene extends Scene {
 
     private void ensureFont() {
         if (font == null) {
-            font = applet().createFont("src/data/cmunbmr.ttf", 150, true);
+            // The reference look is Lato; fall back through common sans faces
+            // so the scene renders the same everywhere without bundling a font.
+            font = applet().createFont(pickFontFace(
+                    "Lato Bold", "Lato", "Helvetica Neue Bold", "HelveticaNeue-Bold",
+                    "Arial Bold", "DejaVu Sans Bold", "Verdana Bold"), 150, true);
+            grid.setLabelFont(applet().createFont(pickFontFace(
+                    "Lato", "Helvetica Neue", "Arial", "DejaVu Sans", "Verdana"), 150, true));
         }
+    }
+
+    /** First installed font face/family from the preference list, else logical SansSerif. */
+    private static String pickFontFace(String... preferred) {
+        java.util.Set<String> available = new java.util.HashSet<>();
+        for (java.awt.Font installed
+                : java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getAllFonts()) {
+            available.add(installed.getFontName(Locale.ENGLISH).toLowerCase(Locale.ROOT));
+            available.add(installed.getFamily(Locale.ENGLISH).toLowerCase(Locale.ROOT));
+        }
+        for (String candidate : preferred) {
+            if (available.contains(candidate.toLowerCase(Locale.ROOT))) {
+                return candidate;
+            }
+        }
+        return "SansSerif";
     }
 
     // ------------------------------------------------------------------

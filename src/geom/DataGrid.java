@@ -216,6 +216,11 @@ public final class DataGrid {
         this.xCalendarDayZero = null;
     }
 
+    /** Overrides the default (Computer Modern) axis label font. */
+    public void setLabelFont(PFont labelFont) {
+        this.font = Objects.requireNonNull(labelFont, "labelFont");
+    }
+
     public void setPlotInsets(float leftInset, float topInset, float rightInset, float bottomInset) {
         if (leftInset < 0 || topInset < 0 || rightInset < 0 || bottomInset < 0) {
             throw new IllegalArgumentException("Plot insets must be non-negative");
