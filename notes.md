@@ -27,6 +27,7 @@ This file is the handoff context for future Codex sessions. Read it before start
 - Dev-only scene selection can be overridden with `-DsceneClass=...`
 - `-DsceneClass=...` now preserves constructor-thrown runtime failures instead of reporting them as missing `Applet` constructors
 - Gradle auto-generates `run<SceneName>` tasks for files under `src/directions/scenes/`
+- Generated `run<SceneName>` tasks now default to `fullscreen=true`, `recordVideo=true`, `holdOnFinish=true`, and `videoPath=output/<SceneName>.mp4`; use `-Dfullscreen=false` to keep a scene windowed
 - `./gradlew listScenes` prints the currently discoverable scene task names
 
 ## Important Runtime Findings
@@ -51,8 +52,13 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `fullscreen`
   - `recordVideo`
   - `ffmpegPath`
+  - `videoPath`
+  - `holdOnFinish`
   - `sceneClass`
-- Video export expects `ffmpeg` on `PATH` by default, and can be overridden with `-DffmpegPath=/absolute/path/to/ffmpeg`.
+- The old bundled `VideoExport.jar` is not Processing 4 compatible because it reads the removed `PApplet.frame` field; runtime recording now uses `src/core/FfmpegRecorder.java` instead of the library jar.
+- Recording expects `ffmpeg` on `PATH` by default, and can be overridden with `-DffmpegPath=/absolute/path/to/ffmpeg`.
+- `Main` now defaults recordings to `output/<ResolvedSceneName>.mp4`, prints the active recording path at startup, and lets `FfmpegRecorder` create parent directories automatically.
+- When `holdOnFinish=true`, the director keeps re-rendering the final scene frame after completion so the ffmpeg recorder can continue capturing until the operator presses `q`.
 - SVG export now creates parent directories automatically, so `temp/` can stay ignored and untracked.
 - JVM crash logs are ignored via `hs_err_pid*.log`.
 - The tracked `hs_err_pid79698.log` dump was removed and scrubbed from branch history because it contained local path/user data.
@@ -69,12 +75,15 @@ This file is the handoff context for future Codex sessions. Read it before start
 - `Grid` and `Graph` no longer own global viewport constants; they derive bounds from the active canvas size.
 - A new chart-specific `src/geom/DataGrid.java` now exists again, but it is a fresh first-quadrant renderer for data charts, not the removed legacy `DataGrid`.
 - `DataGrid` uses anchored domain-space grid families (`anchor + n * step`) so lines stay phase-locked during pan/rescale, and it renders with grey gridlines, white left/bottom axes, and offset label bands similar to the older look.
-- `DataGrid` now uses a coarser but still phase-aligned minor family (`2` subdivisions in `TestScene`), and its draw loops allow one extra anchored line family to appear slightly beyond the top/right plot edges instead of only lengthening existing lines.
+- `DataGrid` draw loops allow one extra anchored line family to appear slightly beyond the top/right plot edges instead of only lengthening existing lines.
 - `DataGrid` now extends the white axes with the same top/right overscan as the grid so the chart frame and extra line families stay visually aligned.
-- `DataGrid` now suppresses the lower-left corner labels at the axis intersection (e.g. `0` and `800` in the current test setup) and adds a second label pass for minor grid values using smaller, greyer, more transparent text.
+- `DataGrid` now suppresses the lower-left corner labels at the axis intersection (e.g. `0` and `800` in the current test setup), and secondary adaptive label families render smaller, greyer, and more transparent than the dominant family.
 - `DataGrid` label generation now follows the same top/right overscan window as the grid and extends the left/bottom label bands accordingly, so top/right labels can appear beyond the plot instead of clipping at `xMax` / `yMax`.
-- `TestScene` currently spaces the `DataGrid` y-axis majors at `150` units with `2` minor subdivisions, anchors the y-grid at `800` so the bottom axis sits on a major line, and uses slightly larger minor labels for readability.
+- `DataGrid` now renders adaptive anchored tick families on both axes using the `1, 2, 5, 10` scale ladder. Labels and gridlines fade according to screen-space spacing, so a base `100` y-step naturally transitions through `200`, `500`, `1000`, etc. when zooming out, and smaller sub-base steps fade in only when the base spacing becomes genuinely sparse.
+- `DataGrid` uses the same adaptive family logic for x-axis labels/gridlines, so future data-story zoom-outs can widen the x-domain without crushing labels.
+- `TestScene` currently uses a `100` y-axis base step, anchors the y-grid at `800` so the bottom axis sits on a major line, and relies on `DataGrid` adaptive tick families instead of fixed minor label spacing.
 - `TestScene` now also draws a bright sine curve directly in chart space, reveals it over time, and starts horizontally following the curve once its head reaches roughly `85%` of the visible x-window.
+- Once the `TestScene` sine reveal reaches the end of the data, it eases the x-domain back out to show the full graph, exercising the adaptive x-axis path.
 - `DataGrid` now fades vertical grid lines against the left plot edge over about one current x-major gap, so lines exiting during follow soften out while incoming right-side lines stay crisp.
 - `DataGrid` now derives a smooth left-rail collapse from `xMin` relative to `xAnchor`, auto-sizes the slim pinned y-label rail from the currently visible y-label widths, and expands the plot leftward as follow begins instead of leaving a fixed empty gutter.
 - `DataGrid` now renders the y-axis as the world-space vertical line at `xAnchor`, fades that line as it exits through the collapsing left rail, and applies matching alpha to x-labels for fading vertical lines, including the returning `0` label under the moving axis.
@@ -87,6 +96,44 @@ This file is the handoff context for future Codex sessions. Read it before start
 - `TestScene` now exercises `DataGrid` on the verified `JAVA2D` renderer path and was confirmed to run to completion with `./gradlew runTestScene --console=plain -Drenderer=JAVA2D -Dfullscreen=false`.
 - `Graph` reveal now has a clean update path separate from rendering, so the scene no longer double-renders graph segments during reveal.
 - The old legacy runner, old scene tree, and old `DataGraph` / `DataGrid` classes have been removed.
+
+## CS2 Top-Players Race (feature/cs2-top5-race)
+- `DataGrid`'s tick system was rewritten. The old per-family rendering treated
+  the `1, 2, 5` ladder as nested, but 2x and 5x steps are not mutually nested
+  (500 is not a multiple of 200), so two full label bands could render at once
+  and the "dominant family" styling snapped discretely. Now all families merge
+  into a single tick list: each tick's alpha is the max over the families
+  containing it (continuous bump curve over log2 of px spacing), and size /
+  brightness / stroke derive continuously from that alpha. Crossfades are
+  smooth in both zoom directions; sub-base steps still fade in only when the
+  base family becomes sparse.
+- `DataGrid.setXCalendarAxis(LocalDate dayZero)` switches x to calendar mode:
+  x values are days since `dayZero`; ticks sit on month / quarter (Jan 1,
+  Apr 1, Jul 1, Oct 1) / year / 2-5-10-year boundaries and crossfade with the
+  same machinery. Jan 1 labels render as the year ("2025"), other boundaries
+  as the short month name. Quarter labels dominate at a ~15-month window,
+  years take over on zoom-out.
+- `util/Pchip.java`: monotone (Fritsch-Carlson / MATLAB-style) piecewise cubic
+  Hermite interpolation, used to evaluate rating curves smoothly between
+  weekly rolling-average knots. Clamped outside the knot range.
+- `directions/scenes/Cs2TopPlayersScene.java`: animated race of top CS2
+  players by 3-month rolling HLTV rating. Camera follows the head through a
+  450-day window, then eases out to the full range. Includes per-line head
+  labels with collision-resolved smooth flips on overtakes, a top-left
+  "CURRENT #1" card (name/team/rating/days on top), and a top-right simulated
+  date readout. `-DmsPerDay=N` controls playback speed (default 100; the
+  user's original suggestion of 250 also works, just slower).
+- Data pipeline: `src/data/cs2/top_players_rolling.csv` (player,team,color,
+  date,rating weekly knots). `tools/generate_cs2_mock_data.py` produces
+  realistic mock data (match-level noise -> 90-day rolling average; career
+  arcs hand-tuned to reality through mid-2025). `tools/scrape_hltv.py` is an
+  unverified best-effort real scraper (HLTV is Cloudflare-protected; run it
+  from a residential IP) that emits the same CSV schema.
+- Verified in a headless Linux sandbox: full compile (ECJ, release 21) and
+  recorded runs of both `Cs2TopPlayersScene` and `TestScene` under
+  Xvfb/JAVA2D with frame-by-frame visual inspection. Known cosmetic niceties
+  left open: head-label stack can crowd when 6 lines converge, and faint
+  next-family ticks are visible mid-crossfade by design.
 
 ## Recommended Next Steps
 1. Reduce debug printing left in unrelated utilities, especially SVG code and any remaining exploratory logging.
@@ -106,3 +153,9 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `./gradlew listScenes`
 - Run a discovered scene directly:
   - `./gradlew runTestScene`
+  - `./gradlew runTestScene -Dfullscreen=false`
+  - `./gradlew runTestScene -DvideoPath=output/custom-name.mp4`
+- CS2 race scene:
+  - `python3 tools/generate_cs2_mock_data.py` (regenerate data; only needed after editing the generator)
+  - `./gradlew runCs2TopPlayersScene`
+  - `./gradlew runCs2TopPlayersScene -Dfullscreen=false -DmsPerDay=40` (fast preview)

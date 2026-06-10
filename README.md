@@ -54,7 +54,7 @@ Run a scene directly from the Gradle task list:
 ./gradlew runTestScene
 ```
 
-Per-scene dev run tasks are generated automatically from `src/directions/scenes/*Scene.java`.
+Per-scene run tasks are generated automatically from `src/directions/scenes/*Scene.java`. They now default to fullscreen, record to `output/<SceneName>.mp4`, and keep the final frame alive until you press `q`. Pass `-Dfullscreen=false` when you want the scene in a window instead.
 
 Video export example:
 
@@ -62,5 +62,20 @@ Video export example:
 ./gradlew -DrecordVideo=true runWindowed
 ```
 
-Video export requires `ffmpeg` to be available on `PATH`.
+Recording uses the in-repo ffmpeg pipe recorder and requires `ffmpeg` to be available on `PATH`.
 If needed, pass `-DffmpegPath=/absolute/path/to/ffmpeg`.
+You can also override the output path with `-DvideoPath=/absolute/path/to/file.mp4`.
+
+## CS2 top-players race
+
+`Cs2TopPlayersScene` animates the top CS2 players by 3-month rolling HLTV rating
+(calendar x-axis, auto-fitting y-axis, leader card, smooth label flips):
+
+```sh
+./gradlew runCs2TopPlayersScene                  # full-speed (100 ms per simulated day)
+./gradlew runCs2TopPlayersScene -DmsPerDay=40    # quick preview
+```
+
+Data lives in `src/data/cs2/top_players_rolling.csv`. Regenerate the bundled
+mock data with `python3 tools/generate_cs2_mock_data.py`, or swap in real HLTV
+data with `tools/scrape_hltv.py` (same CSV schema; needs a residential IP).

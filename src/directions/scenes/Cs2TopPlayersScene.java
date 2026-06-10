@@ -1,0 +1,597 @@
+package directions.scenes;
+
+import core.Applet;
+import directions.engine.Action;
+import directions.engine.Actions;
+import directions.engine.Nodes;
+import directions.engine.Scene;
+import directions.engine.SceneContext;
+import geom.DataGrid;
+import processing.core.PFont;
+import storage.Color;
+import util.Pchip;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Animated race chart of the top CS2 players by 3-month rolling HLTV rating.
+ *
+ * <p>Data comes from {@code src/data/cs2/top_players_rolling.csv}
+ * (player,team,color,date,rating — weekly rolling-average knots produced by
+ * {@code tools/generate_cs2_mock_data.py} or {@code tools/scrape_hltv.py}).
+ * Knots are PCHIP-interpolated, so lines stay smooth and overshoot-free at
+ * any playback speed.
+ *
+ * <p>Timeline: one simulated day per {@code -DmsPerDay} milliseconds
+ * (default {@value #DEFAULT_MS_PER_DAY}). The camera follows the head of the
+ * race through a ~15-month window, then eases out to the full date range at
+ * the end. The current #1 is summarised in a card at the top left, and the
+ * simulated date runs in the top right.
+ */
+public final class Cs2TopPlayersScene extends Scene {
+    private static final String DATA_PATH = "src/data/cs2/top_players_rolling.csv";
+    private static final double DEFAULT_MS_PER_DAY = 100;
+    private static final double WINDOW_DAYS = 450;
+    private static final double FOLLOW_THRESHOLD_RATIO = 0.78;
+    private static final double FINAL_ZOOM_DELAY = 0.6;
+    private static final double FINAL_ZOOM_DURATION = 5.0;
+    private static final double END_HOLD_SECONDS = 4.0;
+    private static final double Y_BASE_STEP = 0.05;
+    private static final double Y_MIN_SPAN = 0.18;
+    private static final double Y_FIT_SAMPLE_DAYS = 5.0;
+    private static final float Y_FIT_EASE_RATE = 2.2f;
+    private static final float LABEL_EASE_RATE = 9f;
+    private static final float LABEL_MIN_GAP_PX = 38f;
+    private static final float RETIRE_LINE_FADE_DAYS = 60f;
+    private static final float RETIRE_LABEL_FADE_SECONDS = 1.6f;
+    /**
+     * Tracks whose data ends within this many days of "now" still count for
+     * ranking/labels. Without it, players whose last knot lands a few days
+     * before the global end of the dataset would all "retire" on the final
+     * frames and hand #1 to whoever happens to have the latest knot.
+     */
+    private static final double RANK_GRACE_DAYS = 45;
+    private static final DateTimeFormatter DATE_READOUT =
+            DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH);
+
+    private final DataGrid grid;
+    private final List<Track> tracks;
+    private final LocalDate dayZero;
+    private final double endDay;
+    private final double msPerDay;
+
+    private PFont font;
+
+    private double tDay;
+    private double visibleXMin;
+    private double visibleXSpan = WINDOW_DAYS;
+    private double yShownMin = 1.0;
+    private double yShownMax = 1.4;
+    private boolean yFitInitialised;
+
+    private Track leader;
+    private double leaderSinceDay;
+
+    private boolean zoomOutStarted;
+    private double zoomOutElapsed;
+    private double zoomOutStartXMin;
+    private double zoomOutStartXSpan;
+    private double endHoldElapsed;
+
+    public Cs2TopPlayersScene(Applet p) {
+        super(p);
+        msPerDay = readMsPerDay();
+        tracks = loadTracks(DATA_PATH);
+        if (tracks.isEmpty()) {
+            throw new IllegalStateException(
+                    "No player data in " + DATA_PATH + " — run tools/generate_cs2_mock_data.py first");
+        }
+        dayZero = tracks.stream()
+                .map(track -> track.firstDate)
+                .min(Comparator.naturalOrder())
+                .orElseThrow();
+        double maxDay = 0;
+        for (Track track : tracks) {
+            track.rebase(dayZero);
+            maxDay = Math.max(maxDay, track.lastDay);
+        }
+        endDay = maxDay;
+
+        grid = new DataGrid(applet());
+        grid.setXCalendarAxis(dayZero);
+        grid.setAnchor(0, 1.0);
+        grid.setYMajorStep(Y_BASE_STEP);
+        grid.setYLabelFormatter(value -> String.format(Locale.ENGLISH, "%.2f", value));
+        grid.setDomain(0, WINDOW_DAYS, yShownMin, yShownMax);
+    }
+
+    @Override
+    protected void onReset() {
+        tDay = 0;
+        visibleXMin = 0;
+        visibleXSpan = WINDOW_DAYS;
+        yFitInitialised = false;
+        leader = null;
+        leaderSinceDay = 0;
+        zoomOutStarted = false;
+        zoomOutElapsed = 0;
+        endHoldElapsed = 0;
+        for (Track track : tracks) {
+            track.labelInitialised = false;
+            track.labelAlpha = 0f;
+            track.strokeBoost = 0f;
+        }
+        grid.setDomain(0, WINDOW_DAYS, yShownMin, yShownMax);
+    }
+
+    @Override
+    protected Action build() {
+        addUpdater(this::updateTimeline);
+        addNode(Nodes.of(grid::render));
+        addNode(Nodes.of(this::drawSeries));
+        addNode(this::drawHeadLabels);
+        addNode(Nodes.of(this::drawLeaderCard));
+        addNode(Nodes.of(this::drawDateReadout));
+
+        return Actions.update(this::isFinished);
+    }
+
+    private boolean isFinished() {
+        return zoomOutStarted
+                && zoomOutElapsed >= FINAL_ZOOM_DELAY + FINAL_ZOOM_DURATION
+                && endHoldElapsed >= END_HOLD_SECONDS;
+    }
+
+    // ------------------------------------------------------------------
+    // Simulation / camera
+    // ------------------------------------------------------------------
+
+    private void updateTimeline(SceneContext ctx) {
+        double dt = ctx.dt();
+        tDay = Math.min(endDay, tDay + dt * 1000.0 / msPerDay);
+
+        if (tDay >= endDay) {
+            updateFinalZoom(dt);
+        } else {
+            double followStart = visibleXMin + visibleXSpan * FOLLOW_THRESHOLD_RATIO;
+            if (tDay > followStart) {
+                visibleXMin = tDay - visibleXSpan * FOLLOW_THRESHOLD_RATIO;
+            }
+        }
+        grid.setXRange(visibleXMin, visibleXMin + visibleXSpan);
+
+        updateRanking(dt);
+        updateYFit(dt);
+    }
+
+    private void updateFinalZoom(double dt) {
+        if (!zoomOutStarted) {
+            zoomOutStarted = true;
+            zoomOutElapsed = 0;
+            zoomOutStartXMin = visibleXMin;
+            zoomOutStartXSpan = visibleXSpan;
+        }
+        zoomOutElapsed += dt;
+        double progress = clamp01((zoomOutElapsed - FINAL_ZOOM_DELAY) / FINAL_ZOOM_DURATION);
+        double eased = smoothstep(progress);
+        visibleXMin = interpolate(zoomOutStartXMin, 0, eased);
+        visibleXSpan = interpolate(zoomOutStartXSpan, endDay + 14, eased);
+        if (progress >= 1.0) {
+            endHoldElapsed += dt;
+        }
+    }
+
+    private void updateRanking(double dt) {
+        Track best = null;
+        double bestValue = Double.NEGATIVE_INFINITY;
+        for (Track track : tracks) {
+            if (!track.isActiveAt(tDay)) {
+                continue;
+            }
+            double value = track.spline.value(tDay);
+            if (value > bestValue) {
+                bestValue = value;
+                best = track;
+            }
+        }
+        if (best != null && best != leader) {
+            leader = best;
+            leaderSinceDay = tDay;
+        }
+        if (leader != null && !leader.isActiveAt(tDay)) {
+            leader = null;
+        }
+        for (Track track : tracks) {
+            float target = track == leader ? 1f : 0f;
+            track.strokeBoost = ease(track.strokeBoost, target, dt, 6f);
+        }
+    }
+
+    private void updateYFit(double dt) {
+        double xLo = visibleXMin;
+        double xHi = visibleXMin + visibleXSpan;
+        double min = Double.POSITIVE_INFINITY;
+        double max = Double.NEGATIVE_INFINITY;
+        for (Track track : tracks) {
+            double lo = Math.max(track.firstDay, xLo);
+            double hi = Math.min(Math.min(tDay, track.lastDay), xHi);
+            if (hi <= lo) {
+                continue;
+            }
+            for (double d = lo; d <= hi + 1e-9; d += Y_FIT_SAMPLE_DAYS) {
+                double v = track.spline.value(Math.min(d, hi));
+                min = Math.min(min, v);
+                max = Math.max(max, v);
+            }
+        }
+        if (min > max) {
+            return; // nothing visible yet — keep the current window
+        }
+
+        double span = Math.max(Y_MIN_SPAN, (max - min) / 0.62);
+        // Generous headroom up top so the race stays clear of the leader card.
+        double targetMax = max + span * 0.26;
+        double targetMin = targetMax - span;
+
+        if (!yFitInitialised) {
+            yShownMin = targetMin;
+            yShownMax = targetMax;
+            yFitInitialised = true;
+        } else {
+            yShownMin = ease((float) yShownMin, (float) targetMin, dt, Y_FIT_EASE_RATE);
+            yShownMax = ease((float) yShownMax, (float) targetMax, dt, Y_FIT_EASE_RATE);
+        }
+        grid.setYRange(yShownMin, yShownMax);
+    }
+
+    // ------------------------------------------------------------------
+    // Drawing
+    // ------------------------------------------------------------------
+
+    private void drawSeries() {
+        Applet p = applet();
+        double xLo = grid.getXMin();
+        double xHi = grid.getXMax();
+        double stepDays = Math.max(0.4, (xHi - xLo) / Math.max(1f, grid.getPlotWidth()) * 2.0);
+        float plotTop = grid.getPlotTop();
+        float plotBottom = plotTop + grid.getPlotHeight();
+
+        for (Track track : tracks) {
+            double headDay = Math.min(tDay, track.lastDay);
+            double lo = Math.max(track.firstDay, xLo);
+            double hi = Math.min(headDay, xHi);
+            if (hi <= lo) {
+                continue;
+            }
+
+            float lineAlpha = 100f;
+            if (tDay > track.lastDay) {
+                lineAlpha = 100f - 56f * clamp01F((float) ((tDay - track.lastDay) / RETIRE_LINE_FADE_DAYS));
+            }
+
+            p.noFill();
+            strokeTrack(track, lineAlpha);
+            p.strokeWeight(4f + 1.8f * track.strokeBoost);
+            p.beginShape();
+            for (double d = lo; d < hi; d += stepDays) {
+                p.vertex(grid.domainToCanvasX(d),
+                        clamp(grid.domainToCanvasY(track.spline.value(d)), plotTop, plotBottom));
+            }
+            p.vertex(grid.domainToCanvasX(hi),
+                    clamp(grid.domainToCanvasY(track.spline.value(hi)), plotTop, plotBottom));
+            p.endShape();
+
+            if (headDay >= xLo && headDay <= xHi && tDay >= track.firstDay) {
+                float hx = grid.domainToCanvasX(headDay);
+                float hy = clamp(grid.domainToCanvasY(track.spline.value(headDay)), plotTop, plotBottom);
+                p.noStroke();
+                fillTrack(track, lineAlpha);
+                p.circle(hx, hy, 13f + 3f * track.strokeBoost);
+                p.fill(0, 0, 100, lineAlpha);
+                p.circle(hx, hy, 5f);
+            }
+        }
+    }
+
+    private void drawHeadLabels(SceneContext ctx) {
+        Applet p = applet();
+        ensureFont();
+        p.textFont(font);
+
+        float plotTop = grid.getPlotTop();
+        float plotBottom = plotTop + grid.getPlotHeight();
+        float plotRight = grid.getPlotLeft() + grid.getPlotWidth();
+        double dt = ctx.dt();
+
+        // Collect visible labels with their natural (line-head) positions.
+        List<Track> visible = new ArrayList<>();
+        for (Track track : tracks) {
+            float targetAlpha = track.isActiveAt(tDay) && tDay >= track.firstDay ? 1f : 0f;
+            track.labelAlpha = ease(track.labelAlpha, targetAlpha,
+                    dt, targetAlpha > track.labelAlpha ? 4f : 1f / (RETIRE_LABEL_FADE_SECONDS * 0.45f));
+            double headDay = Math.min(tDay, track.lastDay);
+            if (track.labelAlpha <= 0.02f || headDay < grid.getXMin() || tDay < track.firstDay) {
+                continue;
+            }
+            track.labelTargetY = clamp(grid.domainToCanvasY(track.spline.value(headDay)),
+                    plotTop + 26f, plotBottom - 22f);
+            track.labelHeadX = grid.domainToCanvasX(Math.min(headDay, grid.getXMax()));
+            visible.add(track);
+        }
+
+        // Resolve vertical collisions on the targets, then ease the displayed
+        // positions toward them — overtakes read as a smooth label flip.
+        visible.sort(Comparator.comparingDouble(track -> track.labelTargetY));
+        for (int i = 1; i < visible.size(); i++) {
+            Track prev = visible.get(i - 1);
+            Track current = visible.get(i);
+            current.labelTargetY = Math.max(current.labelTargetY, prev.labelTargetY + LABEL_MIN_GAP_PX);
+        }
+        for (int i = visible.size() - 1; i >= 0; i--) {
+            Track current = visible.get(i);
+            float limit = i == visible.size() - 1
+                    ? plotBottom - 22f
+                    : visible.get(i + 1).labelTargetY - LABEL_MIN_GAP_PX;
+            current.labelTargetY = Math.min(current.labelTargetY, limit);
+        }
+
+        for (Track track : visible) {
+            if (!track.labelInitialised) {
+                track.labelY = track.labelTargetY;
+                track.labelInitialised = true;
+            } else {
+                track.labelY = ease(track.labelY, track.labelTargetY, dt, LABEL_EASE_RATE);
+            }
+
+            String rating = String.format(Locale.ENGLISH, "%.3f",
+                    track.spline.value(Math.min(tDay, track.lastDay)));
+            p.textSize(30);
+            float nameWidth = p.textWidth(track.name);
+            p.textSize(23);
+            float ratingWidth = p.textWidth(rating);
+
+            float x = track.labelHeadX + 18f;
+            x = Math.min(x, plotRight - nameWidth - ratingWidth - 24f);
+
+            p.textAlign(Applet.LEFT, Applet.CENTER);
+            p.noStroke();
+            p.textSize(30);
+            p.fill(0, 0, 0, 62f * track.labelAlpha);
+            p.text(track.name, x + 2f, track.labelY + 2f);
+            fillTrack(track, 100f * track.labelAlpha);
+            p.text(track.name, x, track.labelY);
+            p.textSize(23);
+            p.fill(0, 0, 78, 88f * track.labelAlpha);
+            p.text(rating, x + nameWidth + 12f, track.labelY + 2f);
+        }
+    }
+
+    private void drawLeaderCard() {
+        if (leader == null) {
+            return;
+        }
+        Applet p = applet();
+        ensureFont();
+        p.textFont(font);
+
+        float x0 = grid.getPlotLeft() + 26f;
+        float y0 = grid.getPlotTop() + 22f;
+        float x1 = x0 + 340f;
+        float y1 = y0 + 152f;
+
+        p.fill(0, 0, 6, 80);
+        strokeTrack(leader, 85f);
+        p.strokeWeight(2.5f);
+        p.rect(x0, y0, x1, y1, 14f);
+
+        int daysOnTop = (int) Math.max(0, Math.floor(tDay - leaderSinceDay));
+        String rating = String.format(Locale.ENGLISH, "%.3f", leader.spline.value(tDay));
+
+        p.noStroke();
+        p.textAlign(Applet.LEFT, Applet.TOP);
+        p.textSize(17);
+        p.fill(0, 0, 62, 92);
+        p.text("CURRENT #1", x0 + 22f, y0 + 14f);
+        p.textSize(44);
+        fillTrack(leader, 100f);
+        p.text(leader.name, x0 + 22f, y0 + 36f);
+        p.textSize(20);
+        p.fill(0, 0, 62, 92);
+        p.text(leader.team, x0 + 22f, y0 + 92f);
+        p.textSize(22);
+        p.fill(0, 0, 92, 96);
+        p.text("Rating " + rating + "   ·   " + daysOnTop + (daysOnTop == 1 ? " day" : " days")
+                + " on top", x0 + 22f, y0 + 120f);
+    }
+
+    private void drawDateReadout() {
+        Applet p = applet();
+        ensureFont();
+        p.textFont(font);
+
+        LocalDate date = dayZero.plusDays((long) Math.floor(Math.min(tDay, endDay)));
+        p.noStroke();
+        p.textAlign(Applet.RIGHT, Applet.TOP);
+        p.textSize(50);
+        p.fill(0, 0, 100, 94);
+        p.text(DATE_READOUT.format(date), halfViewportWidth() - 46f, -halfViewportHeight() + 30f);
+    }
+
+    private void strokeTrack(Track track, float alpha) {
+        Color c = track.color;
+        p.stroke(c.getHue().getValue(), c.getSaturation().getValue(),
+                c.getBrightness().getValue(), alpha);
+    }
+
+    private void fillTrack(Track track, float alpha) {
+        Color c = track.color;
+        p.fill(c.getHue().getValue(), c.getSaturation().getValue(),
+                c.getBrightness().getValue(), alpha);
+    }
+
+    private void ensureFont() {
+        if (font == null) {
+            font = applet().createFont("src/data/cmunbmr.ttf", 150, true);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Data loading
+    // ------------------------------------------------------------------
+
+    private static List<Track> loadTracks(String path) {
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(Path.of(path));
+        } catch (IOException e) {
+            throw new UncheckedIOException(
+                    "Could not read " + path + " — run tools/generate_cs2_mock_data.py "
+                            + "(or tools/scrape_hltv.py) from the repo root first", e);
+        }
+
+        Map<String, TrackBuilder> builders = new LinkedHashMap<>();
+        for (int i = 1; i < lines.size(); i++) {
+            String line = lines.get(i).trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            String[] parts = line.split(",");
+            if (parts.length < 5) {
+                throw new IllegalStateException(path + " line " + (i + 1) + " is malformed: " + line);
+            }
+            TrackBuilder builder = builders.computeIfAbsent(parts[0],
+                    name -> new TrackBuilder(name, parts[1], parts[2]));
+            builder.dates.add(LocalDate.parse(parts[3]));
+            builder.ratings.add(Double.parseDouble(parts[4]));
+        }
+
+        List<Track> tracks = new ArrayList<>();
+        for (TrackBuilder builder : builders.values()) {
+            tracks.add(builder.build());
+        }
+        return tracks;
+    }
+
+    private static double readMsPerDay() {
+        String raw = System.getProperty("msPerDay", "").trim();
+        if (raw.isEmpty()) {
+            return DEFAULT_MS_PER_DAY;
+        }
+        double parsed = Double.parseDouble(raw);
+        if (parsed <= 0) {
+            throw new IllegalArgumentException("msPerDay must be positive: " + raw);
+        }
+        return parsed;
+    }
+
+    // ------------------------------------------------------------------
+    // Small math helpers
+    // ------------------------------------------------------------------
+
+    private static float ease(float current, float target, double dt, float rate) {
+        return current + (target - current) * (1f - (float) Math.exp(-rate * dt));
+    }
+
+    private static double ease(double current, double target, double dt, float rate) {
+        return current + (target - current) * (1.0 - Math.exp(-rate * dt));
+    }
+
+    private static double interpolate(double start, double end, double progress) {
+        return start + (end - start) * progress;
+    }
+
+    private static double clamp01(double value) {
+        return Math.max(0, Math.min(1, value));
+    }
+
+    private static float clamp01F(float value) {
+        return Math.max(0f, Math.min(1f, value));
+    }
+
+    private static float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static double smoothstep(double value) {
+        return value * value * (3 - 2 * value);
+    }
+
+    private static final class TrackBuilder {
+        private final String name;
+        private final String team;
+        private final String color;
+        private final List<LocalDate> dates = new ArrayList<>();
+        private final List<Double> ratings = new ArrayList<>();
+
+        private TrackBuilder(String name, String team, String color) {
+            this.name = name;
+            this.team = team;
+            this.color = color;
+        }
+
+        private Track build() {
+            return new Track(name, team, Color.fromCss(color), dates, ratings);
+        }
+    }
+
+    private static final class Track {
+        private final String name;
+        private final String team;
+        private final Color color;
+        private final LocalDate firstDate;
+        private final List<LocalDate> dates;
+        private final List<Double> ratings;
+
+        private Pchip spline;
+        private double firstDay;
+        private double lastDay;
+
+        private float labelY;
+        private float labelTargetY;
+        private float labelHeadX;
+        private float labelAlpha;
+        private boolean labelInitialised;
+        private float strokeBoost;
+
+        private Track(String name, String team, Color color,
+                      List<LocalDate> dates, List<Double> ratings) {
+            if (dates.size() < 2) {
+                throw new IllegalStateException("Track " + name + " needs at least two knots");
+            }
+            this.name = name;
+            this.team = team;
+            this.color = color;
+            this.dates = dates;
+            this.ratings = ratings;
+            this.firstDate = dates.get(0);
+        }
+
+        private void rebase(LocalDate dayZero) {
+            double[] xs = new double[dates.size()];
+            double[] ys = new double[dates.size()];
+            for (int i = 0; i < dates.size(); i++) {
+                xs[i] = ChronoUnit.DAYS.between(dayZero, dates.get(i));
+                ys[i] = ratings.get(i);
+            }
+            spline = new Pchip(xs, ys);
+            firstDay = xs[0];
+            lastDay = xs[xs.length - 1];
+        }
+
+        private boolean isActiveAt(double day) {
+            return day >= firstDay && day <= lastDay + RANK_GRACE_DAYS;
+        }
+    }
+}
