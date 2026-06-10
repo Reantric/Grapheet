@@ -38,8 +38,9 @@ import java.util.Map;
  * <p>Timeline: one simulated day per {@code -DmsPerDay} milliseconds
  * (default {@value #DEFAULT_MS_PER_DAY}). The camera follows the head of the
  * race through a one-year window, then eases out to the full date range at
- * the end. Top left shows a reference-style leader header, top right the
- * simulated date. Optional avatar thumbnails are picked up from
+ * the end with the race head pinned in place. Top left shows a
+ * reference-style leader header, top right the simulated date. Optional
+ * avatar thumbnails are picked up from
  * {@code src/data/cs2/avatars/<player>.png}.
  */
 public final class Cs2TopPlayersScene extends Scene {
@@ -67,6 +68,14 @@ public final class Cs2TopPlayersScene extends Scene {
      * frames and hand #1 to whoever happens to have the latest knot.
      */
     private static final double RANK_GRACE_DAYS = 45;
+    /**
+     * A track counts as part of the race FRONT (shared label column, label
+     * queue) only while its data reaches within this many days of "now".
+     * The wider RANK_GRACE_DAYS is for ranking/label-fade only — using it
+     * for the column made a freshly-retired line drag the whole label column
+     * back onto the dots.
+     */
+    private static final double FRONT_TOLERANCE_DAYS = 10;
     /** Alpha of the translucent panels behind the HUD blocks (2DGP look). */
     private static final float HUD_PANEL_ALPHA = 40f;
     private static final DateTimeFormatter DATE_READOUT =
@@ -94,6 +103,7 @@ public final class Cs2TopPlayersScene extends Scene {
     private double zoomOutElapsed;
     private double zoomOutStartXMin;
     private double zoomOutStartXSpan;
+    private double zoomOutHeadFraction = FOLLOW_THRESHOLD_RATIO;
     private double endHoldElapsed;
 
     public Cs2TopPlayersScene(Applet p) {
@@ -121,6 +131,9 @@ public final class Cs2TopPlayersScene extends Scene {
         grid.setYMajorStep(Y_BASE_STEP);
         grid.setYLabelFormatter(value -> String.format(Locale.ENGLISH, "%.2f", value));
         grid.setDomain(0, WINDOW_DAYS, yShownMin, yShownMax);
+        // The follow camera is one-way: once the y-axis has collapsed away it
+        // must not reappear during the final zoom-out.
+        grid.setRailCollapseRatchet(true);
     }
 
     @Override
@@ -135,6 +148,7 @@ public final class Cs2TopPlayersScene extends Scene {
         leaderSinceDay = 0;
         zoomOutStarted = false;
         zoomOutElapsed = 0;
+        zoomOutHeadFraction = FOLLOW_THRESHOLD_RATIO;
         endHoldElapsed = 0;
         for (Track track : tracks) {
             track.labelInitialised = false;
@@ -142,6 +156,7 @@ public final class Cs2TopPlayersScene extends Scene {
             track.strokeBoost = 0f;
         }
         grid.setDomain(0, WINDOW_DAYS, yShownMin, yShownMax);
+        grid.setRailCollapseRatchet(true);
     }
 
     @Override
@@ -190,12 +205,17 @@ public final class Cs2TopPlayersScene extends Scene {
             zoomOutElapsed = 0;
             zoomOutStartXMin = visibleXMin;
             zoomOutStartXSpan = visibleXSpan;
+            // Pin the race head to its current screen position: only the
+            // history behind it compresses as the window stretches back to
+            // day zero, so the dots and labels never move horizontally.
+            zoomOutHeadFraction = clamp01((endDay - zoomOutStartXMin) / zoomOutStartXSpan);
+            zoomOutHeadFraction = Math.max(0.5, Math.min(0.95, zoomOutHeadFraction));
         }
         zoomOutElapsed += dt;
         double progress = clamp01((zoomOutElapsed - FINAL_ZOOM_DELAY) / FINAL_ZOOM_DURATION);
         double eased = smoothstep(progress);
         visibleXMin = interpolate(zoomOutStartXMin, 0, eased);
-        visibleXSpan = interpolate(zoomOutStartXSpan, endDay + 14, eased);
+        visibleXSpan = (endDay - visibleXMin) / zoomOutHeadFraction;
         if (progress >= 1.0) {
             endHoldElapsed += dt;
         }
@@ -325,7 +345,12 @@ public final class Cs2TopPlayersScene extends Scene {
         double dt = ctx.dt();
 
         // Collect visible labels with their natural (line-head) positions.
+        // Only tracks whose data reaches "now" form the race FRONT — they
+        // share one label column and the collision queue. Retired lines keep
+        // their label at their own line end while it fades out, so they never
+        // drag the column backward onto the dots.
         List<Track> visible = new ArrayList<>();
+        List<Track> front = new ArrayList<>();
         for (Track track : tracks) {
             float targetAlpha = track.isActiveAt(tDay) && tDay >= track.firstDay ? 1f : 0f;
             track.labelAlpha = ease(track.labelAlpha, targetAlpha,
@@ -338,51 +363,52 @@ public final class Cs2TopPlayersScene extends Scene {
                     plotTop + 26f, plotBottom - 22f);
             track.labelHeadX = grid.domainToCanvasX(Math.min(headDay, grid.getXMax()));
             visible.add(track);
+            if (tDay <= track.lastDay + FRONT_TOLERANCE_DAYS) {
+                front.add(track);
+            }
         }
 
-        // The queue: labels are ranked by current rating and spread to the
-        // minimum gap in that order — first on the targets, then again on the
-        // displayed positions after easing, so two labels can never render
+        // The queue: front labels are ranked by current rating and spread to
+        // the minimum gap in that order — first on the targets, then again on
+        // the displayed positions after easing, so two labels can never render
         // intersecting. On an overtake the ranks swap, the pair squeezes to
         // exactly the gap and slides past — the smooth name flip.
-        visible.sort((a, b) -> Double.compare(
+        front.sort((a, b) -> Double.compare(
                 b.spline.value(Math.min(tDay, b.lastDay)),
                 a.spline.value(Math.min(tDay, a.lastDay))));
 
         float queueTop = plotTop + 26f;
         float queueBottom = plotBottom - 22f;
-        float[] targets = new float[visible.size()];
-        for (int i = 0; i < visible.size(); i++) {
-            targets[i] = visible.get(i).labelTargetY;
+        float[] targets = new float[front.size()];
+        for (int i = 0; i < front.size(); i++) {
+            targets[i] = front.get(i).labelTargetY;
         }
         stackWithGaps(targets, queueTop, queueBottom);
-        for (int i = 0; i < visible.size(); i++) {
-            visible.get(i).labelTargetY = targets[i];
+        for (int i = 0; i < front.size(); i++) {
+            front.get(i).labelTargetY = targets[i];
         }
 
-        float[] shown = new float[visible.size()];
-        for (int i = 0; i < visible.size(); i++) {
-            Track track = visible.get(i);
+        for (Track track : visible) {
             if (!track.labelInitialised) {
                 track.labelY = track.labelTargetY;
                 track.labelInitialised = true;
             } else {
                 track.labelY = ease(track.labelY, track.labelTargetY, dt, LABEL_EASE_RATE);
             }
-            shown[i] = track.labelY;
+        }
+        float[] shown = new float[front.size()];
+        for (int i = 0; i < front.size(); i++) {
+            shown[i] = front.get(i).labelY;
         }
         stackWithGaps(shown, queueTop, queueBottom);
-        for (int i = 0; i < visible.size(); i++) {
-            visible.get(i).labelY = shown[i];
+        for (int i = 0; i < front.size(); i++) {
+            front.get(i).labelY = shown[i];
         }
 
-        // One shared column for every label: near the end of the dataset the
-        // heads stop at slightly different last knots, so per-head x would
-        // split the stack into ragged clusters. Anchor the column on the
-        // midpoint of the active heads instead. Retired lines (whose heads
-        // sit far back) keep their own x while their label fades out. Labels
-        // may run past the plot into the right margin — only the viewport
-        // edge clips them.
+        // One shared column for the front, anchored at the midpoint of its
+        // head dots (they only differ near the dataset end, where lines stop
+        // at slightly different last knots). Labels may run past the plot
+        // into the right margin — only the viewport edge clips them.
         p.textSize(30);
         boolean anyAvatar = false;
         float maxLabelWidth = 0f;
@@ -391,10 +417,10 @@ public final class Cs2TopPlayersScene extends Scene {
         for (Track track : visible) {
             maxLabelWidth = Math.max(maxLabelWidth, p.textWidth(headLabelText(track)));
             anyAvatar |= avatarFor(track) != null;
-            if (track.isActiveAt(tDay)) {
-                minHeadX = Math.min(minHeadX, track.labelHeadX);
-                maxHeadX = Math.max(maxHeadX, track.labelHeadX);
-            }
+        }
+        for (Track track : front) {
+            minHeadX = Math.min(minHeadX, track.labelHeadX);
+            maxHeadX = Math.max(maxHeadX, track.labelHeadX);
         }
         float avatarSpace = anyAvatar ? 40f : 0f;
         float clampX = halfViewportWidth() - maxLabelWidth - avatarSpace - 24f;
@@ -404,7 +430,7 @@ public final class Cs2TopPlayersScene extends Scene {
 
         for (Track track : visible) {
             String label = headLabelText(track);
-            float x = track.isActiveAt(tDay)
+            float x = front.contains(track)
                     ? columnX
                     : Math.min(track.labelHeadX + 16f, clampX);
 
