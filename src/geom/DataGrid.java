@@ -6,13 +6,65 @@ import storage.Color;
 import storage.ColorType;
 
 import java.text.DecimalFormat;
+import java.time.LocalDate;
+import java.time.format.TextStyle;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.function.DoubleFunction;
 
+/**
+ * First-quadrant data chart renderer with adaptive, fade-in/fade-out tick
+ * families on both axes.
+ *
+ * <p>Tick model: candidate steps come from the nice-step ladder
+ * {@code ... 1, 2, 5, 10, 20, 50 ...} (or calendar boundaries — month,
+ * quarter, year, 2/5/10 years — when the x axis is in calendar mode). Each
+ * family gets a continuous alpha from a bump curve over the log of its
+ * screen-space spacing, so families fade in as their spacing approaches a
+ * comfortable ideal and fade out as they get cramped or too sparse.
+ *
+ * <p>Families on the ladder are not mutually nested (500 is not a multiple of
+ * 200), so families are NOT rendered independently. Instead all visible
+ * families are merged into one tick list; a tick's alpha is the max over the
+ * families that contain it, and its visual style (size, brightness, stroke)
+ * derives continuously from that alpha. This is what makes zoom transitions
+ * read as a clean crossfade instead of duplicated/cramped label bands.
+ */
 public final class DataGrid {
     private static final double EPSILON = 1e-6;
     private static final float LABEL_BAND_GAP = 14f;
     private static final float SLIM_RAIL_PADDING = 16f;
+    private static final double[] NICE_STEP_MULTIPLIERS = {1.0, 2.0, 5.0};
+
+    private static final float ALPHA_EPSILON = 0.02f;
+
+    // Numeric-axis bump curves (log2 distance from the ideal spacing).
+    private static final float GRID_IDEAL_SPACING_PX = 84f;
+    private static final float GRID_PLATEAU_LOG2 = 0.75f;
+    private static final float GRID_SUPPORT_LOG2 = 1.55f;
+    private static final float LABEL_IDEAL_SPACING_PX = 112f;
+    private static final float LABEL_PLATEAU_LOG2 = 0.5f;
+    private static final float LABEL_SUPPORT_LOG2 = 1.1f;
+
+    // Calendar-axis bump curves. Ideals are wider: quarter labels should
+    // dominate at the default window, years after a zoom-out.
+    private static final float DATE_GRID_IDEAL_SPACING_PX = 240f;
+    private static final float DATE_GRID_PLATEAU_LOG2 = 0.75f;
+    private static final float DATE_GRID_SUPPORT_LOG2 = 1.9f;
+    private static final float DATE_LABEL_IDEAL_SPACING_PX = 280f;
+    private static final float DATE_LABEL_PLATEAU_LOG2 = 0.6f;
+    private static final float DATE_LABEL_SUPPORT_LOG2 = 1.45f;
+
+    // Steps finer than the configured base step only fade in once the base
+    // family itself has become sparse (px spacing of the base family).
+    private static final float SUB_BASE_GRID_RAMP_START_PX = 110f;
+    private static final float SUB_BASE_GRID_RAMP_END_PX = 190f;
+    private static final float SUB_BASE_LABEL_RAMP_START_PX = 130f;
+    private static final float SUB_BASE_LABEL_RAMP_END_PX = 230f;
 
     private final Applet p;
     private final DecimalFormat numberFormat = new DecimalFormat("0.##");
@@ -41,24 +93,20 @@ public final class DataGrid {
     private double xMajorStep = 3;
     private double yMajorStep = 100;
 
-    private int xMinorDivisions = 2;
-    private int yMinorDivisions = 2;
+    /** When non-null, x values are interpreted as days since this date. */
+    private LocalDate xCalendarDayZero;
 
     private DoubleFunction<String> xLabelFormatter = this::formatDefaultLabel;
     private DoubleFunction<String> yLabelFormatter = this::formatDefaultLabel;
 
     private final Color axisColor = new Color(ColorType.WHITE);
-    private final Color majorGridColor = new Color(0, 0, 46, 44);
-    private final Color minorGridColor = new Color(0, 0, 28, 28);
-    private final Color labelColor = new Color(ColorType.WHITE);
-    private final Color minorLabelColor = new Color(0, 0, 72, 42);
     private final Color labelBackgroundColor = new Color(0, 0, 0, 92);
 
     private float axisStroke = 5f;
     private float majorGridStroke = 2.75f;
     private float minorGridStroke = 1.5f;
     private float majorLabelSize = 34f;
-    private float minorLabelSize = 30f;
+    private float minorLabelSize = 27f;
     private float xLabelInset = 40f;
     private float yLabelInset = 18f;
     private float topGridOverscan = 112f;
@@ -73,33 +121,53 @@ public final class DataGrid {
     }
 
     public void render() {
-        updatePlotArea();
-        if (plotWidth <= 0 || plotHeight <= 0 || xMax <= xMin || yMax <= yMin) {
+        // Plot top/height never depend on tick contents; rail width does
+        // (via y-label widths), so resolve geometry in two phases.
+        viewportLeft = -p.width / 2f;
+        plotTop = -p.height / 2f + topInset;
+        plotHeight = p.height - topInset - bottomInset;
+        if (plotHeight <= 0 || xMax <= xMin || yMax <= yMin) {
             return;
         }
 
-        drawMinorGrid();
-        drawMajorGrid();
+        List<Tick> yTicks = buildNumericTicks(yMin, yMax, yAnchor, yMajorStep, plotHeight,
+                topGridOverscan, yLabelFormatter);
+
+        currentCollapseProgress = railCollapseProgress();
+        float currentLeftRailWidth = interpolate(leftInset, slimRailWidth(yTicks), currentCollapseProgress);
+        plotLeft = viewportLeft + currentLeftRailWidth;
+        plotWidth = p.width - currentLeftRailWidth - rightInset;
+        if (plotWidth <= 0) {
+            return;
+        }
+
+        List<Tick> xTicks = xCalendarDayZero != null
+                ? buildCalendarTicks()
+                : buildNumericTicks(xMin, xMax, xAnchor, xMajorStep, plotWidth,
+                        rightGridOverscan, xLabelFormatter);
+
+        drawVerticalGrid(xTicks);
+        drawHorizontalGrid(yTicks);
         if (showAxisBackgroundStrips) {
             drawLabelBands();
         }
         drawAxes();
         if (showLabels) {
-            drawLabels();
+            ensureFont();
+            p.textFont(font);
+            p.noStroke();
+            drawYLabels(yTicks);
+            drawXLabels(xTicks);
         }
     }
 
+    // ------------------------------------------------------------------
+    // Configuration
+    // ------------------------------------------------------------------
+
     public void setDomain(double xMin, double xMax, double yMin, double yMax) {
-        if (xMax <= xMin) {
-            throw new IllegalArgumentException("xMax must be greater than xMin");
-        }
-        if (yMax <= yMin) {
-            throw new IllegalArgumentException("yMax must be greater than yMin");
-        }
-        this.xMin = xMin;
-        this.xMax = xMax;
-        this.yMin = yMin;
-        this.yMax = yMax;
+        setXRange(xMin, xMax);
+        setYRange(yMin, yMax);
     }
 
     public void setXRange(double xMin, double xMax) {
@@ -131,12 +199,20 @@ public final class DataGrid {
         this.yMajorStep = requirePositive(yMajorStep, "yMajorStep");
     }
 
-    public void setMinorDivisions(int xMinorDivisions, int yMinorDivisions) {
-        if (xMinorDivisions < 1 || yMinorDivisions < 1) {
-            throw new IllegalArgumentException("Minor divisions must be at least 1");
-        }
-        this.xMinorDivisions = xMinorDivisions;
-        this.yMinorDivisions = yMinorDivisions;
+    /**
+     * Switch the x axis to calendar mode: x values become days since
+     * {@code dayZero}, gridlines/labels sit on month, quarter (Jan 1, Apr 1,
+     * Jul 1, Oct 1) and year boundaries, and fade between granularities with
+     * zoom. Also sets the x major step to an average quarter so the moving
+     * left-rail math keeps working.
+     */
+    public void setXCalendarAxis(LocalDate dayZero) {
+        this.xCalendarDayZero = Objects.requireNonNull(dayZero, "dayZero");
+        this.xMajorStep = 91.3125;
+    }
+
+    public void clearXCalendarAxis() {
+        this.xCalendarDayZero = null;
     }
 
     public void setPlotInsets(float leftInset, float topInset, float rightInset, float bottomInset) {
@@ -169,6 +245,10 @@ public final class DataGrid {
         this.showAxisBackgroundStrips = showAxisBackgroundStrips;
     }
 
+    // ------------------------------------------------------------------
+    // Geometry helpers for scene code
+    // ------------------------------------------------------------------
+
     public float domainToCanvasX(double value) {
         double t = (value - xMin) / (xMax - xMin);
         return plotLeft + (float) (t * plotWidth);
@@ -179,82 +259,261 @@ public final class DataGrid {
         return plotTop + plotHeight - (float) (t * plotHeight);
     }
 
-    private void updatePlotArea() {
-        viewportLeft = -p.width / 2f;
-        float viewportTop = -p.height / 2f;
-        plotTop = viewportTop + topInset;
-        plotHeight = p.height - topInset - bottomInset;
-        currentCollapseProgress = railCollapseProgress();
-        float currentLeftRailWidth = interpolate(leftInset, slimRailWidth(), currentCollapseProgress);
-        plotLeft = viewportLeft + currentLeftRailWidth;
-        plotWidth = p.width - currentLeftRailWidth - rightInset;
+    public float getPlotLeft() {
+        return plotLeft;
     }
 
-    private void drawMinorGrid() {
-        if (!showMinorGrid) {
-            return;
+    public float getPlotTop() {
+        return plotTop;
+    }
+
+    public float getPlotWidth() {
+        return plotWidth;
+    }
+
+    public float getPlotHeight() {
+        return plotHeight;
+    }
+
+    public double getXMin() {
+        return xMin;
+    }
+
+    public double getXMax() {
+        return xMax;
+    }
+
+    public double getYMin() {
+        return yMin;
+    }
+
+    public double getYMax() {
+        return yMax;
+    }
+
+    // ------------------------------------------------------------------
+    // Tick construction
+    // ------------------------------------------------------------------
+
+    private List<Tick> buildNumericTicks(
+            double min,
+            double max,
+            double anchor,
+            double baseStep,
+            float pixelSpan,
+            float overscanPx,
+            DoubleFunction<String> formatter
+    ) {
+        double span = max - min;
+        if (baseStep <= EPSILON || span <= EPSILON || pixelSpan <= 0f) {
+            return new ArrayList<>();
         }
 
-        drawVerticalFamily(xMajorStep / xMinorDivisions, minorGridColor, minorGridStroke, xMajorStep);
-        drawHorizontalFamily(yMajorStep / yMinorDivisions, minorGridColor, minorGridStroke, yMajorStep);
-    }
+        List<double[]> families = new ArrayList<>(); // {step, gridAlpha, labelAlpha}
+        int firstIndex = niceStepFloorIndex(baseStep, span * 8.0 / pixelSpan) - 1;
+        int lastIndex = niceStepFloorIndex(baseStep, span * 1500.0 / pixelSpan) + 2;
 
-    private void drawMajorGrid() {
-        drawVerticalFamily(xMajorStep, majorGridColor, majorGridStroke, Double.NaN);
-        drawHorizontalFamily(yMajorStep, majorGridColor, majorGridStroke, Double.NaN);
-    }
+        float baseSpacingPx = (float) (pixelSpan * (baseStep / span));
+        float subBaseGrid = smoothstep(clamp01((baseSpacingPx - SUB_BASE_GRID_RAMP_START_PX)
+                / (SUB_BASE_GRID_RAMP_END_PX - SUB_BASE_GRID_RAMP_START_PX)));
+        float subBaseLabel = smoothstep(clamp01((baseSpacingPx - SUB_BASE_LABEL_RAMP_START_PX)
+                / (SUB_BASE_LABEL_RAMP_END_PX - SUB_BASE_LABEL_RAMP_START_PX)));
 
-    private void drawVerticalFamily(double step, Color color, float strokeWeight, double majorStep) {
-        if (step <= 0) {
-            return;
+        int bestLabelIndex = Integer.MIN_VALUE;
+        float bestLabelAlpha = 0f;
+        for (int index = firstIndex; index <= lastIndex; index++) {
+            double step = niceStep(baseStep, index);
+            if (step <= EPSILON) {
+                continue;
+            }
+            float spacingPx = (float) (pixelSpan * (step / span));
+            float gridAlpha = bumpAlpha(spacingPx, GRID_IDEAL_SPACING_PX, GRID_PLATEAU_LOG2, GRID_SUPPORT_LOG2);
+            float labelAlpha = bumpAlpha(spacingPx, LABEL_IDEAL_SPACING_PX, LABEL_PLATEAU_LOG2, LABEL_SUPPORT_LOG2);
+            if (index < 0) {
+                gridAlpha *= subBaseGrid;
+                labelAlpha *= subBaseLabel;
+            }
+            if (labelAlpha > bestLabelAlpha) {
+                bestLabelAlpha = labelAlpha;
+                bestLabelIndex = index;
+            }
+            if (Math.max(gridAlpha, labelAlpha) > ALPHA_EPSILON) {
+                families.add(new double[]{step, gridAlpha, labelAlpha});
+            }
         }
 
-        p.strokeWeight(strokeWeight);
+        // Never leave an axis unlabeled: if everything faded out (possible at
+        // extreme zoom-in with sub-base suppression), force the best family.
+        if (bestLabelAlpha <= ALPHA_EPSILON && bestLabelIndex != Integer.MIN_VALUE) {
+            families.add(new double[]{niceStep(baseStep, bestLabelIndex), 1.0, 1.0});
+        }
+        if (families.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        double finestStep = Double.MAX_VALUE;
+        for (double[] family : families) {
+            finestStep = Math.min(finestStep, family[0]);
+        }
+        // Every ladder step above the finest visible one is an integer
+        // multiple of (finestStep / 2), so this key merges coincident ticks
+        // exactly, with no floating-point near-miss duplicates.
+        double keyUnit = finestStep / 2.0;
+
+        double low = Math.min(min, anchor);
+        double high = max + span * (overscanPx / pixelSpan);
+
+        TreeMap<Long, Tick> merged = new TreeMap<>();
+        for (double[] family : families) {
+            double step = family[0];
+            float gridAlpha = (float) family[1];
+            float labelAlpha = (float) family[2];
+            double first = firstLineAtOrAfter(low, anchor, step);
+            for (double value = first; value <= high + EPSILON; value += step) {
+                long key = Math.round((value - anchor) / keyUnit);
+                double snapped = anchor + key * keyUnit;
+                Tick tick = merged.get(key);
+                if (tick == null) {
+                    tick = new Tick(snapped, formatter.apply(cleanZero(snapped)));
+                    merged.put(key, tick);
+                }
+                tick.gridAlpha = Math.max(tick.gridAlpha, gridAlpha);
+                tick.labelAlpha = Math.max(tick.labelAlpha, labelAlpha);
+            }
+        }
+        return new ArrayList<>(merged.values());
+    }
+
+    private List<Tick> buildCalendarTicks() {
+        double span = xMax - xMin;
+        if (span <= EPSILON || plotWidth <= 0f) {
+            return new ArrayList<>();
+        }
+
+        double low = Math.min(xMin, xAnchor);
+        double high = xMax + span * (rightGridOverscan / plotWidth);
+
+        TreeMap<Long, Tick> merged = new TreeMap<>();
+        for (CalendarFamily family : CalendarFamily.values()) {
+            float spacingPx = (float) (plotWidth * (family.averageDays / span));
+            float gridAlpha = bumpAlpha(spacingPx, DATE_GRID_IDEAL_SPACING_PX,
+                    DATE_GRID_PLATEAU_LOG2, DATE_GRID_SUPPORT_LOG2);
+            float labelAlpha = bumpAlpha(spacingPx, DATE_LABEL_IDEAL_SPACING_PX,
+                    DATE_LABEL_PLATEAU_LOG2, DATE_LABEL_SUPPORT_LOG2);
+            if (Math.max(gridAlpha, labelAlpha) <= ALPHA_EPSILON) {
+                continue;
+            }
+
+            LocalDate date = family.firstBoundaryOnOrAfter(
+                    xCalendarDayZero.plusDays((long) Math.floor(low)));
+            while (true) {
+                long day = ChronoUnit.DAYS.between(xCalendarDayZero, date);
+                if (day > high + EPSILON) {
+                    break;
+                }
+                Tick tick = merged.get(day);
+                if (tick == null) {
+                    tick = new Tick(day, calendarLabel(date));
+                    merged.put(day, tick);
+                }
+                tick.gridAlpha = Math.max(tick.gridAlpha, gridAlpha);
+                tick.labelAlpha = Math.max(tick.labelAlpha, labelAlpha);
+                date = family.next(date);
+            }
+        }
+        return new ArrayList<>(merged.values());
+    }
+
+    private static String calendarLabel(LocalDate date) {
+        if (date.getDayOfMonth() == 1 && date.getMonthValue() == 1) {
+            return String.valueOf(date.getYear());
+        }
+        String month = date.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
+        return date.getDayOfMonth() == 1 ? month : month + " " + date.getDayOfMonth();
+    }
+
+    /**
+     * Continuous fade curve: full alpha while the family's pixel spacing is
+     * within {@code plateauLog2} octaves of the ideal spacing, easing to zero
+     * at {@code supportLog2} octaves (both toward cramped and toward sparse).
+     */
+    private float bumpAlpha(float spacingPx, float idealPx, float plateauLog2, float supportLog2) {
+        if (spacingPx <= 0f) {
+            return 0f;
+        }
+        float u = Math.abs((float) (Math.log(spacingPx / idealPx) / Math.log(2)));
+        if (u <= plateauLog2) {
+            return 1f;
+        }
+        if (u >= supportLog2) {
+            return 0f;
+        }
+        return 1f - smoothstep((u - plateauLog2) / (supportLog2 - plateauLog2));
+    }
+
+    // ------------------------------------------------------------------
+    // Drawing
+    // ------------------------------------------------------------------
+
+    private void drawVerticalGrid(List<Tick> ticks) {
+        float plotRight = plotLeft + plotWidth;
+        float fadeWidthPx = xBaseGapWidthPx();
         p.noFill();
 
-        float plotRight = plotLeft + plotWidth;
-        float fadeWidthPx = xMajorGapWidthPx();
-        double first = firstLineAtOrAfter(xMin, xAnchor, step);
-        for (double value = first; ; value += step) {
-            if (isAxisLineValue(value)) {
+        for (Tick tick : ticks) {
+            float t = tick.gridAlpha;
+            if (t <= ALPHA_EPSILON || isAxisLineValue(tick.value)) {
                 continue;
             }
-            if (!Double.isNaN(majorStep) && isAligned(value, xAnchor, majorStep)) {
+            if (!showMinorGrid && t < 0.85f) {
                 continue;
             }
-            float x = domainToCanvasX(value);
+            float x = domainToCanvasX(tick.value);
             if (x > plotRight + rightGridOverscan + 1f) {
                 break;
             }
             if (x < plotLeft - 1f) {
                 continue;
             }
-            strokeWithAlpha(color, leftVerticalFadeFactor(x, fadeWidthPx));
+            float fade = leftVerticalFadeFactor(x, fadeWidthPx);
+            if (fade <= 0f) {
+                continue;
+            }
+            applyGridStroke(t, fade);
             p.line(x, plotTop - topGridOverscan, x, plotTop + plotHeight);
         }
     }
 
-    private void drawHorizontalFamily(double step, Color color, float strokeWeight, double majorStep) {
-        if (step <= 0) {
-            return;
-        }
-
-        p.stroke(color);
-        p.strokeWeight(strokeWeight);
+    private void drawHorizontalGrid(List<Tick> ticks) {
+        float plotRight = plotLeft + plotWidth;
         p.noFill();
 
-        float plotRight = plotLeft + plotWidth;
-        double first = firstLineAtOrAfter(yMin, yAnchor, step);
-        for (double value = first; ; value += step) {
-            if (!Double.isNaN(majorStep) && isAligned(value, yAnchor, majorStep)) {
+        for (Tick tick : ticks) {
+            float t = tick.gridAlpha;
+            if (t <= ALPHA_EPSILON) {
                 continue;
             }
-            float y = domainToCanvasY(value);
+            if (!showMinorGrid && t < 0.85f) {
+                continue;
+            }
+            float y = domainToCanvasY(tick.value);
             if (y < plotTop - topGridOverscan - 1f) {
                 break;
             }
+            if (y > plotTop + plotHeight + 1f) {
+                continue;
+            }
+            applyGridStroke(t, 1f);
             p.line(plotLeft, y, plotRight + rightGridOverscan, y);
         }
+    }
+
+    /** Gridline style is a continuous function of the tick's fade state. */
+    private void applyGridStroke(float t, float extraFade) {
+        p.strokeWeight(interpolate(minorGridStroke, majorGridStroke, t));
+        float brightness = interpolate(26f, 46f, t);
+        float alpha = interpolate(20f, 44f, t) * clamp01(t / 0.3f) * extraFade;
+        p.stroke(0, 0, brightness, alpha);
     }
 
     private void drawAxes() {
@@ -280,73 +539,73 @@ public final class DataGrid {
         p.rect(plotLeft, bottomBandTop, plotRight + rightGridOverscan, bottomBandBottom);
     }
 
-    private void drawLabels() {
-        ensureFont();
-        p.textFont(font);
-        p.noStroke();
-
-        drawMinorYLabels();
-        drawMinorXLabels();
-        drawYLabels();
-        drawXLabels();
-    }
-
-    private void drawYLabels() {
-        p.textSize(majorLabelSize);
-        p.fill(labelColor);
+    private void drawYLabels(List<Tick> ticks) {
         p.textAlign(Applet.RIGHT, Applet.CENTER);
-        double first = firstLineAtOrAfter(yMin, yAnchor, yMajorStep);
-        for (double value = first; ; value += yMajorStep) {
-            float y = domainToCanvasY(value);
-            if (y < plotTop - topGridOverscan - 1f) {
-                break;
-            }
-            if (y > plotTop + plotHeight + 1f) {
+        for (Tick tick : ticks) {
+            float t = tick.labelAlpha;
+            if (t <= ALPHA_EPSILON) {
                 continue;
             }
-            if (isBottomAxisLabel(y)) {
+            if (!showMinorGrid && t < 0.85f) {
                 continue;
             }
-            p.text(yLabelFormatter.apply(cleanZero(value)), yLabelX(), y);
-        }
-    }
-
-    private void drawXLabels() {
-        drawXLabelsForStep(xMajorStep, Double.NaN, majorLabelSize, labelColor);
-    }
-
-    private void drawMinorYLabels() {
-        if (!showMinorGrid) {
-            return;
-        }
-
-        p.textSize(minorLabelSize);
-        p.fill(minorLabelColor);
-        p.textAlign(Applet.RIGHT, Applet.CENTER);
-        double step = yMajorStep / yMinorDivisions;
-        double first = firstLineAtOrAfter(yMin, yAnchor, step);
-        for (double value = first; ; value += step) {
-            if (isAligned(value, yAnchor, yMajorStep)) {
-                continue;
-            }
-            float y = domainToCanvasY(value);
+            float y = domainToCanvasY(tick.value);
             if (y < plotTop - topGridOverscan - 1f) {
                 break;
             }
             if (y > plotTop + plotHeight + 1f || isBottomAxisLabel(y)) {
                 continue;
             }
-            p.text(yLabelFormatter.apply(cleanZero(value)), yLabelX(), y);
+            applyLabelStyle(t, 1f);
+            p.text(tick.label, yLabelX(), y);
         }
     }
 
-    private void drawMinorXLabels() {
-        if (!showMinorGrid) {
-            return;
-        }
+    private void drawXLabels(List<Tick> ticks) {
+        float labelY = plotTop + plotHeight + xLabelInset;
+        float plotRight = plotLeft + plotWidth;
+        float fadeWidthPx = xBaseGapWidthPx();
 
-        drawXLabelsForStep(xMajorStep / xMinorDivisions, xMajorStep, minorLabelSize, minorLabelColor);
+        p.textAlign(Applet.CENTER, Applet.CENTER);
+        for (Tick tick : ticks) {
+            float t = tick.labelAlpha;
+            if (t <= ALPHA_EPSILON) {
+                continue;
+            }
+            if (!showMinorGrid && t < 0.85f) {
+                continue;
+            }
+            float x = domainToCanvasX(tick.value);
+            if (x > plotRight + rightGridOverscan + 1f) {
+                break;
+            }
+            if (!shouldDrawXLabel(tick.value, x)) {
+                continue;
+            }
+            float fade = xLabelFadeFactor(tick.value, x, fadeWidthPx);
+            if (fade <= ALPHA_EPSILON) {
+                continue;
+            }
+            applyLabelStyle(t, fade);
+            p.text(tick.label, x, labelY);
+        }
     }
+
+    /**
+     * Label style is a continuous function of the tick's fade state: fading
+     * ticks shrink toward the minor size and dim, which is what keeps
+     * crossfades readable instead of two full label bands fighting.
+     */
+    private void applyLabelStyle(float t, float extraFade) {
+        p.textSize(interpolate(minorLabelSize, majorLabelSize, t));
+        float brightness = interpolate(68f, 100f, t);
+        float alpha = 100f * (float) Math.pow(t, 1.5) * extraFade;
+        p.fill(0, 0, brightness, alpha);
+    }
+
+    // ------------------------------------------------------------------
+    // Rail collapse + edge fades
+    // ------------------------------------------------------------------
 
     private void ensureFont() {
         if (font == null) {
@@ -358,12 +617,11 @@ public final class DataGrid {
         return numberFormat.format(cleanZero(value));
     }
 
-    private float xMajorGapWidthPx() {
-        if (xMajorStep <= 0 || xMax <= xMin) {
+    private float xBaseGapWidthPx() {
+        if (xMajorStep <= 0 || xMax <= xMin || plotWidth <= 0) {
             return 1f;
         }
-        float width = (float) (plotWidth * (xMajorStep / (xMax - xMin)));
-        return Math.max(1f, width);
+        return Math.max(1f, (float) (plotWidth * (xMajorStep / (xMax - xMin))));
     }
 
     private float railCollapseProgress() {
@@ -374,7 +632,7 @@ public final class DataGrid {
         return smoothstep(clamp01(progress));
     }
 
-    private float slimRailWidth() {
+    private float slimRailWidth(List<Tick> yTicks) {
         float minRailWidth = yLabelInset + SLIM_RAIL_PADDING;
         if (!showLabels) {
             return minRailWidth;
@@ -383,38 +641,40 @@ public final class DataGrid {
         ensureFont();
         p.textFont(font);
 
-        float maxLabelWidth = maxVisibleYLabelWidth(yMajorStep, Double.NaN, majorLabelSize);
-        if (showMinorGrid) {
-            maxLabelWidth = Math.max(
-                    maxLabelWidth,
-                    maxVisibleYLabelWidth(yMajorStep / yMinorDivisions, yMajorStep, minorLabelSize)
-            );
+        float maxLabelWidth = 0f;
+        for (Tick tick : yTicks) {
+            if (tick.labelAlpha <= ALPHA_EPSILON) {
+                continue;
+            }
+            float y = domainToCanvasY(tick.value);
+            if (y < plotTop - topGridOverscan - 1f || y > plotTop + plotHeight + 1f) {
+                continue;
+            }
+            p.textSize(interpolate(minorLabelSize, majorLabelSize, tick.labelAlpha));
+            maxLabelWidth = Math.max(maxLabelWidth, p.textWidth(tick.label));
         }
         return Math.max(minRailWidth, maxLabelWidth + yLabelInset + SLIM_RAIL_PADDING);
     }
 
-    private float maxVisibleYLabelWidth(double step, double skipAlignedStep, float textSize) {
-        if (step <= 0) {
-            return 0f;
+    private double niceStep(double baseStep, int index) {
+        int power = Math.floorDiv(index, NICE_STEP_MULTIPLIERS.length);
+        int multiplierIndex = Math.floorMod(index, NICE_STEP_MULTIPLIERS.length);
+        return baseStep * NICE_STEP_MULTIPLIERS[multiplierIndex] * Math.pow(10, power);
+    }
+
+    private int niceStepFloorIndex(double baseStep, double targetStep) {
+        if (targetStep <= EPSILON) {
+            return 0;
         }
 
-        p.textSize(textSize);
-        float maxWidth = 0f;
-        double first = firstLineAtOrAfter(yMin, yAnchor, step);
-        for (double value = first; ; value += step) {
-            if (!Double.isNaN(skipAlignedStep) && isAligned(value, yAnchor, skipAlignedStep)) {
-                continue;
-            }
-            float y = domainToCanvasY(value);
-            if (y < plotTop - topGridOverscan - 1f) {
-                break;
-            }
-            if (y > plotTop + plotHeight + 1f || isBottomAxisLabel(y)) {
-                continue;
-            }
-            maxWidth = Math.max(maxWidth, p.textWidth(yLabelFormatter.apply(cleanZero(value))));
+        int index = 0;
+        while (index < 120 && niceStep(baseStep, index + 1) <= targetStep * (1.0 + EPSILON)) {
+            index++;
         }
-        return maxWidth;
+        while (index > -120 && niceStep(baseStep, index) > targetStep * (1.0 + EPSILON)) {
+            index--;
+        }
+        return index;
     }
 
     private float leftVerticalFadeFactor(float x, float fadeWidthPx) {
@@ -448,45 +708,12 @@ public final class DataGrid {
 
     private void drawWorldYAxis(float plotBottom) {
         float x = domainToCanvasX(xAnchor);
-        float alphaFactor = yAxisFadeFactor(x, xMajorGapWidthPx());
+        float alphaFactor = yAxisFadeFactor(x, xBaseGapWidthPx());
         if (alphaFactor <= 0f) {
             return;
         }
         strokeWithAlpha(axisColor, alphaFactor);
         p.line(x, plotTop - topGridOverscan, x, plotBottom);
-    }
-
-    private void drawXLabelsForStep(double step, double skipAlignedStep, float textSize, Color color) {
-        if (step <= 0) {
-            return;
-        }
-
-        p.textSize(textSize);
-        p.textAlign(Applet.CENTER, Applet.CENTER);
-        float labelY = plotTop + plotHeight + xLabelInset;
-        float plotRight = plotLeft + plotWidth;
-        float fadeWidthPx = xMajorGapWidthPx();
-        double first = firstLineAtOrAfter(xMin, xAnchor, step);
-        for (double value = first; ; value += step) {
-            if (!Double.isNaN(skipAlignedStep) && isAligned(value, xAnchor, skipAlignedStep)) {
-                continue;
-            }
-            float x = domainToCanvasX(value);
-            if (x > plotRight + rightGridOverscan + 1f) {
-                break;
-            }
-            if (!shouldDrawXLabel(value, x)) {
-                continue;
-            }
-
-            float alphaFactor = xLabelFadeFactor(value, x, fadeWidthPx);
-            if (alphaFactor <= 0f) {
-                continue;
-            }
-
-            fillWithAlpha(color, alphaFactor);
-            p.text(xLabelFormatter.apply(cleanZero(value)), x, labelY);
-        }
     }
 
     private boolean shouldDrawXLabel(double value, float x) {
@@ -508,16 +735,7 @@ public final class DataGrid {
                 color.getHue().getValue(),
                 color.getSaturation().getValue(),
                 color.getBrightness().getValue(),
-                color.getAlpha().getValue() * Math.max(0f, Math.min(1f, alphaFactor))
-        );
-    }
-
-    private void fillWithAlpha(Color color, float alphaFactor) {
-        p.fill(
-                color.getHue().getValue(),
-                color.getSaturation().getValue(),
-                color.getBrightness().getValue(),
-                color.getAlpha().getValue() * Math.max(0f, Math.min(1f, alphaFactor))
+                color.getAlpha().getValue() * clamp01(alphaFactor)
         );
     }
 
@@ -554,12 +772,6 @@ public final class DataGrid {
         return value * value * (3f - 2f * value);
     }
 
-    // Keep each line family phase-locked to a shared anchor while the viewport moves.
-    private boolean isAligned(double value, double anchor, double step) {
-        double offset = (value - anchor) / step;
-        return Math.abs(offset - Math.rint(offset)) < 1e-4;
-    }
-
     private double cleanZero(double value) {
         return Math.abs(value) < EPSILON ? 0 : value;
     }
@@ -569,5 +781,111 @@ public final class DataGrid {
             throw new IllegalArgumentException(name + " must be positive");
         }
         return value;
+    }
+
+    /** One merged tick; alphas are the max over every family containing it. */
+    private static final class Tick {
+        private final double value;
+        private final String label;
+        private float gridAlpha;
+        private float labelAlpha;
+
+        private Tick(double value, String label) {
+            this.value = value;
+            this.label = label;
+        }
+    }
+
+    private enum CalendarFamily {
+        MONTH(30.44) {
+            @Override
+            LocalDate firstBoundaryOnOrAfter(LocalDate date) {
+                return date.getDayOfMonth() == 1 ? date : date.plusMonths(1).withDayOfMonth(1);
+            }
+
+            @Override
+            LocalDate next(LocalDate date) {
+                return date.plusMonths(1);
+            }
+        },
+        QUARTER(91.31) {
+            @Override
+            LocalDate firstBoundaryOnOrAfter(LocalDate date) {
+                LocalDate monthStart = MONTH.firstBoundaryOnOrAfter(date);
+                while ((monthStart.getMonthValue() - 1) % 3 != 0) {
+                    monthStart = monthStart.plusMonths(1);
+                }
+                return monthStart;
+            }
+
+            @Override
+            LocalDate next(LocalDate date) {
+                return date.plusMonths(3);
+            }
+        },
+        YEAR(365.25) {
+            @Override
+            LocalDate firstBoundaryOnOrAfter(LocalDate date) {
+                LocalDate janFirst = date.withDayOfYear(1);
+                return janFirst.isBefore(date) ? janFirst.plusYears(1) : janFirst;
+            }
+
+            @Override
+            LocalDate next(LocalDate date) {
+                return date.plusYears(1);
+            }
+        },
+        TWO_YEARS(730.5) {
+            @Override
+            LocalDate firstBoundaryOnOrAfter(LocalDate date) {
+                LocalDate year = YEAR.firstBoundaryOnOrAfter(date);
+                return year.getYear() % 2 == 0 ? year : year.plusYears(1);
+            }
+
+            @Override
+            LocalDate next(LocalDate date) {
+                return date.plusYears(2);
+            }
+        },
+        FIVE_YEARS(1826.25) {
+            @Override
+            LocalDate firstBoundaryOnOrAfter(LocalDate date) {
+                LocalDate year = YEAR.firstBoundaryOnOrAfter(date);
+                while (year.getYear() % 5 != 0) {
+                    year = year.plusYears(1);
+                }
+                return year;
+            }
+
+            @Override
+            LocalDate next(LocalDate date) {
+                return date.plusYears(5);
+            }
+        },
+        TEN_YEARS(3652.5) {
+            @Override
+            LocalDate firstBoundaryOnOrAfter(LocalDate date) {
+                LocalDate year = YEAR.firstBoundaryOnOrAfter(date);
+                while (year.getYear() % 10 != 0) {
+                    year = year.plusYears(1);
+                }
+                return year;
+            }
+
+            @Override
+            LocalDate next(LocalDate date) {
+                return date.plusYears(10);
+            }
+        };
+
+        final double averageDays;
+
+        CalendarFamily(double averageDays) {
+            this.averageDays = averageDays;
+        }
+
+        abstract LocalDate firstBoundaryOnOrAfter(LocalDate date);
+
+        abstract LocalDate next(LocalDate date);
     }
 }
