@@ -53,23 +53,21 @@ public final class DataGrid {
 
     // Calendar-axis bump curves. Labels stay sparse (full "Dec 1, 2013"-style
     // text needs room, so quarters dominate a ~1-year window and years take
-    // over after a zoom-out), but the GRID keeps the dense Grapheet texture:
-    // a wide support band so month lines render as minors under the quarter
-    // majors instead of disappearing entirely.
+    // over after a zoom-out). The grid keeps a single dominant rhythm with
+    // soft month minors under the quarter majors — the pre-rework feel.
     private static final float DATE_GRID_IDEAL_SPACING_PX = 340f;
     private static final float DATE_GRID_PLATEAU_LOG2 = 0.5f;
-    private static final float DATE_GRID_SUPPORT_LOG2 = 2.2f;
+    private static final float DATE_GRID_SUPPORT_LOG2 = 1.75f;
     private static final float DATE_LABEL_IDEAL_SPACING_PX = 430f;
     private static final float DATE_LABEL_PLATEAU_LOG2 = 0.6f;
     private static final float DATE_LABEL_SUPPORT_LOG2 = 1.5f;
 
     // Steps finer than the configured base step only fade in once the base
-    // family itself has become sparse (px spacing of the base family). The
-    // grid ramp starts early so sub-step minor lines appear at ordinary
-    // zoom levels (the classic Grapheet major+minor texture); labels stay
-    // conservative so text never crams.
-    private static final float SUB_BASE_GRID_RAMP_START_PX = 60f;
-    private static final float SUB_BASE_GRID_RAMP_END_PX = 130f;
+    // family itself has become sparse (px spacing of the base family) —
+    // matching the pre-rework branch, where sub-base lines stayed hidden at
+    // ordinary zoom and the grid kept one clean dominant rhythm.
+    private static final float SUB_BASE_GRID_RAMP_START_PX = 110f;
+    private static final float SUB_BASE_GRID_RAMP_END_PX = 190f;
     private static final float SUB_BASE_LABEL_RAMP_START_PX = 130f;
     private static final float SUB_BASE_LABEL_RAMP_END_PX = 230f;
 

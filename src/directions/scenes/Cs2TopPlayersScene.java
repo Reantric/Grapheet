@@ -376,24 +376,37 @@ public final class Cs2TopPlayersScene extends Scene {
             visible.get(i).labelY = shown[i];
         }
 
-        // Uniform columns: every label reserves the same avatar slot and the
-        // right-edge clamp uses the widest label, so the cluster left-aligns
-        // instead of each row sitting at its own slightly-offset x. Labels may
-        // run past the plot into the right margin — only the viewport edge
-        // clips them.
+        // One shared column for every label: near the end of the dataset the
+        // heads stop at slightly different last knots, so per-head x would
+        // split the stack into ragged clusters. Anchor the column on the
+        // midpoint of the active heads instead. Retired lines (whose heads
+        // sit far back) keep their own x while their label fades out. Labels
+        // may run past the plot into the right margin — only the viewport
+        // edge clips them.
         p.textSize(30);
         boolean anyAvatar = false;
         float maxLabelWidth = 0f;
+        float minHeadX = Float.POSITIVE_INFINITY;
+        float maxHeadX = Float.NEGATIVE_INFINITY;
         for (Track track : visible) {
             maxLabelWidth = Math.max(maxLabelWidth, p.textWidth(headLabelText(track)));
             anyAvatar |= avatarFor(track) != null;
+            if (track.isActiveAt(tDay)) {
+                minHeadX = Math.min(minHeadX, track.labelHeadX);
+                maxHeadX = Math.max(maxHeadX, track.labelHeadX);
+            }
         }
         float avatarSpace = anyAvatar ? 40f : 0f;
         float clampX = halfViewportWidth() - maxLabelWidth - avatarSpace - 24f;
+        float columnX = minHeadX <= maxHeadX
+                ? Math.min((minHeadX + maxHeadX) / 2f + 16f, clampX)
+                : clampX;
 
         for (Track track : visible) {
             String label = headLabelText(track);
-            float x = Math.min(track.labelHeadX + 16f, clampX);
+            float x = track.isActiveAt(tDay)
+                    ? columnX
+                    : Math.min(track.labelHeadX + 16f, clampX);
 
             PImage avatar = avatarFor(track);
             if (avatar != null) {
@@ -419,17 +432,56 @@ public final class Cs2TopPlayersScene extends Scene {
     }
 
     /**
-     * Spread queue positions downward to at least the minimum gap, then pull
-     * everything back up if the stack overflowed the bottom bound.
+     * Enforce the minimum gap with the least total displacement
+     * (pool-adjacent-violators): an isolated label sits exactly at its dot,
+     * and a conflicting group centres on the mean of its dots instead of
+     * always being pushed downward — so the top of a cluster floats slightly
+     * above its dot and the bottom slightly below, keeping names visually
+     * attached to their lines.
      */
     private static void stackWithGaps(float[] ys, float top, float bottom) {
-        for (int i = 0; i < ys.length; i++) {
-            ys[i] = Math.max(ys[i], i == 0 ? top : ys[i - 1] + LABEL_MIN_GAP_PX);
+        int n = ys.length;
+        if (n == 0) {
+            return;
         }
-        if (ys.length > 0 && ys[ys.length - 1] > bottom) {
-            ys[ys.length - 1] = bottom;
-            for (int i = ys.length - 2; i >= 0; i--) {
-                ys[i] = Math.min(ys[i], ys[i + 1] - LABEL_MIN_GAP_PX);
+
+        // Substituting z_i = y_i - i*gap turns "gaps >= gap" into "z is
+        // non-decreasing"; isotonic regression via pool-adjacent-violators.
+        float[] blockSum = new float[n];
+        int[] blockCount = new int[n];
+        int blocks = 0;
+        for (int i = 0; i < n; i++) {
+            blockSum[blocks] = ys[i] - i * LABEL_MIN_GAP_PX;
+            blockCount[blocks] = 1;
+            blocks++;
+            while (blocks > 1 && blockSum[blocks - 2] / blockCount[blocks - 2]
+                    >= blockSum[blocks - 1] / blockCount[blocks - 1]) {
+                blockSum[blocks - 2] += blockSum[blocks - 1];
+                blockCount[blocks - 2] += blockCount[blocks - 1];
+                blocks--;
+            }
+        }
+        int index = 0;
+        for (int b = 0; b < blocks; b++) {
+            float mean = blockSum[b] / blockCount[b];
+            for (int k = 0; k < blockCount[b]; k++) {
+                ys[index] = mean + index * LABEL_MIN_GAP_PX;
+                index++;
+            }
+        }
+
+        // Keep the whole stack inside the plot (bottom bound wins if the
+        // stack is taller than the plot, which cannot happen in practice).
+        float shiftDown = top - ys[0];
+        if (shiftDown > 0) {
+            for (int i = 0; i < n; i++) {
+                ys[i] += shiftDown;
+            }
+        }
+        float shiftUp = ys[n - 1] - bottom;
+        if (shiftUp > 0) {
+            for (int i = 0; i < n; i++) {
+                ys[i] -= shiftUp;
             }
         }
     }
