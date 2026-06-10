@@ -122,8 +122,15 @@ This file is the handoff context for future Codex sessions. Read it before start
   smooth flips on overtakes. Top-left shows a reference-style header
   ("Leader:  Name (rating)" + "For N days (~Y.YY years)"), top-right a
   two-line "Current Date:" readout. Optional avatar thumbnails: drop
-  `src/data/cs2/avatars/<player>.png` and they appear in the head labels and
-  leader header. `-DmsPerDay=N` controls playback speed (default 100).
+  `src/data/cs2/avatars/<player>.png` (exact or lowercase name) and they
+  appear in the head labels and leader header. `-DmsPerDay=N` controls
+  playback speed (default 100).
+- HUD/axis font matches the reference (Lato): the scene picks the first
+  installed face from Lato -> Helvetica Neue -> Arial -> DejaVu Sans ->
+  Verdana (bold variants for the HUD, regular for axis labels via
+  `DataGrid.setLabelFont`), falling back to logical SansSerif. No font file
+  is bundled; install Lato for the exact reference look. Head dots are plain
+  white per the reference; ratings display 2dp like HLTV.
 - Data pipeline: `src/data/cs2/top_players_rolling.csv` (player,team,color,
   date,rating weekly knots). `tools/generate_cs2_mock_data.py` produces
   realistic mock data (match-level noise -> 90-day rolling average; career
