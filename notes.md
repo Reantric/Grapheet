@@ -71,6 +71,7 @@ This file is the handoff context for future Codex sessions. Read it before start
 
 ## Architectural Notes
 - `Grid`, `Graph`, and `ImmutableTex` now expose render/update separation, so the new engine can control orchestration cleanly.
+- Shared app fonts now live on `core.Applet`; `Main` initializes them once via `setSharedFonts(...)`, and scene-owned components can read defaults like `getLatoFont()` / `getLatoBoldFont()` from the passed applet instead of importing from `Main`.
 - Fixed windowed-size defaults now live in `src/core/RenderConfig.java`; runtime viewport math should read live `Applet.width` / `Applet.height` instead of `Grid` constants.
 - `Grid` and `Graph` no longer own global viewport constants; they derive bounds from the active canvas size.
 - A new chart-specific `src/geom/DataGrid.java` now exists again, but it is a fresh first-quadrant renderer for data charts, not the removed legacy `DataGrid`.
@@ -87,6 +88,9 @@ This file is the handoff context for future Codex sessions. Read it before start
 - `DataGrid` now fades vertical grid lines against the left plot edge over about one current x-major gap, so lines exiting during follow soften out while incoming right-side lines stay crisp.
 - `DataGrid` now derives a smooth left-rail collapse from `xMin` relative to `xAnchor`, auto-sizes the slim pinned y-label rail from the currently visible y-label widths, and expands the plot leftward as follow begins instead of leaving a fixed empty gutter.
 - `DataGrid` now renders the y-axis as the world-space vertical line at `xAnchor`, fades that line as it exits through the collapsing left rail, and applies matching alpha to x-labels for fading vertical lines, including the returning `0` label under the moving axis.
+- `DataGrid` now fades the world-space y-axis and matching `0` x-label through a short handoff zone and fully removes them before they enter the pinned left label band, while preserving the left-rail collapse motion that slides the plot and labels left into place.
+- `DataGrid` now renders the bottom label band before the axes but draws the left label rail after the axes, so the pinned left panel behaves like a cover mask and hides the moving world-space y-axis as that axis exits into the rail.
+- `DataGrid` now defaults its major/minor label fonts from the owning applet's shared Lato font and still allows per-grid overrides through `setFonts(...)`; the old lazy internal font creation path is gone.
 - `Grid`'s primary spacing API is now `gridSpacing` / `getGridSpacing()` instead of the older `incrementor` naming.
 - `Grid` camera bounds and axis-label anchoring now compute directly from `camera`; the unused `startingCamera` offset path was removed.
 - `Grid` no longer exposes its core mutable fields directly; scene code should use getters like `getGridSpacing()`, `getSpacing()`, `getTextColor()`, and `getCamera()`.
@@ -125,12 +129,14 @@ This file is the handoff context for future Codex sessions. Read it before start
   `src/data/cs2/avatars/<player>.png` (exact or lowercase name) and they
   appear in the head labels and leader header. `-DmsPerDay=N` controls
   playback speed (default 100).
-- HUD/axis font matches the reference (Lato): the scene picks the first
-  installed face from Lato -> Helvetica Neue -> Arial -> DejaVu Sans ->
-  Verdana (bold variants for the HUD, regular for axis labels via
-  `DataGrid.setLabelFont`), falling back to logical SansSerif. No font file
-  is bundled; install Lato for the exact reference look. Head dots are plain
-  white per the reference; ratings display 2dp like HLTV.
+- HUD/axis font matches the reference (Lato): `Main` loads the bundled
+  `src/data/Lato-{Regular,Bold}.ttf` into `Applet`'s shared fonts and the
+  scene uses them (bold for the HUD, regular for axis labels via
+  `DataGrid.setLabelFont`), so the exact reference look needs no installed
+  fonts. Without `Main`'s setup the scene falls back to scanning installed
+  faces (Lato -> Helvetica Neue -> Arial -> DejaVu Sans -> Verdana, else
+  logical SansSerif). Head dots are plain white per the reference; ratings
+  display 2dp like HLTV.
 - HUD blocks (leader header, Current Date) sit on translucent 2DGP-style
   backing panels sized to their text.
 - The bottom x axis is the world-space "ground" line at the y anchor

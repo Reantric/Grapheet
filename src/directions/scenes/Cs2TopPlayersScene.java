@@ -633,12 +633,15 @@ public final class Cs2TopPlayersScene extends Scene {
 
     private void ensureFont() {
         if (font == null) {
-            // The reference look is Lato; fall back through common sans faces
-            // so the scene renders the same everywhere without bundling a font.
-            font = applet().createFont(pickFontFace(
+            // The reference look is Lato; Main loads the bundled TTFs as
+            // shared fonts, so the installed-face scan is only a fallback for
+            // running the scene without Main's setup.
+            PFont latoBold = applet().getLatoBoldFont();
+            PFont lato = applet().getLatoFont();
+            font = latoBold != null ? latoBold : applet().createFont(pickFontFace(
                     "Lato Bold", "Lato", "Helvetica Neue Bold", "HelveticaNeue-Bold",
                     "Arial Bold", "DejaVu Sans Bold", "Verdana Bold"), 150, true);
-            grid.setLabelFont(applet().createFont(pickFontFace(
+            grid.setLabelFont(lato != null ? lato : applet().createFont(pickFontFace(
                     "Lato", "Helvetica Neue", "Arial", "DejaVu Sans", "Verdana"), 150, true));
         }
     }

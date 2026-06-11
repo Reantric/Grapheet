@@ -4,13 +4,9 @@ import core.RenderConfig;
 import directions.SceneRegistry;
 import directions.engine.Director;
 import processing.core.PApplet;
-import processing.core.PFont;
 import processing.event.MouseEvent;
 
-import static processing.core.PConstants.ROUND;
-
 public class Main extends Applet {
-    public static PFont myFont, italics;
     private static float zoom = 1f;
     private FfmpegRecorder videoRecorder;
     private boolean recordVideo;
@@ -23,8 +19,12 @@ public class Main extends Applet {
 
     public void setup(){
         String commonPath = "src/data/";
-        myFont = createFont(commonPath + "cmunbmr.ttf", 150, true);
-        italics = createFont(commonPath + "cmunbmo.ttf", 150, true);
+        setSharedFonts(
+                createFont(commonPath + "cmunbmr.ttf", 150, true),
+                createFont(commonPath + "cmunbmo.ttf", 150, true),
+                createFont(commonPath + "Lato-Regular.ttf", 150, true),
+                createFont(commonPath + "Lato-Bold.ttf", 150, true)
+        );
         director = SceneRegistry.create(this);
 
         recordVideo = Boolean.getBoolean("recordVideo");
