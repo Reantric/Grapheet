@@ -64,6 +64,10 @@ public class Main extends Applet {
                 size(RenderConfig.DEFAULT_WIDTH, RenderConfig.DEFAULT_HEIGHT);
             }
         }
+        // Retina capture (density 2) quadruples the pixels the software
+        // renderer and the ffmpeg pipe must push, dropping the sketch below
+        // the 60fps the recorder stamps frames at — the video plays fast.
+        pixelDensity(Integer.getInteger("pixelDensity", 1));
         smooth(8);
     }
 
