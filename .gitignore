@@ -20,3 +20,5 @@ test/
 
 # Ignore JVM crash logs that can capture local usernames and paths.
 hs_err_pid*.log
+src/data/Lato-Bold.ttf:Zone.Identifier
+src/data/Lato-Regular.ttf:Zone.Identifier
