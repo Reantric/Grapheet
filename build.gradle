@@ -57,9 +57,10 @@ sourceSets {
 }
 dependencies {
 
-    // Processing (Maven Central)
-    implementation 'org.processing:core:4.4.10'
-    runtimeOnly fileTree(dir: 'library/processing', include: ['*natives-*.jar'])
+    // Processing (Maven Central). 4.5.x is the first line built against
+    // JOGL 2.6.0, whose off-main-thread NSWindow teardown no longer
+    // SIGTRAPs on macOS 26 (JogAmp Bug 1528) — P2D needs it to run at all.
+    implementation 'org.processing:core:4.5.3'
 
     implementation group: 'org.scilab.forge', name: 'jlatexmath', version: '1.0.7'
 
@@ -126,16 +127,24 @@ def configureMainRunTask = { JavaExec task, Map defaults = [:] ->
     task.systemProperty("holdOnFinish", resolveSystemProperty("holdOnFinish", options.holdOnFinish))
     task.systemProperty("scene", resolveSystemProperty("scene", options.scene))
     task.systemProperty("sceneClass", resolveSystemProperty("sceneClass", options.sceneClass))
+    // Optional tuning knobs: forwarded only when set, so app-side defaults apply.
+    ["exportFps", "msPerDay", "hideSurface", "pixelDensity", "ffmpegPreset", "maxFrames"].each { name ->
+        def value = resolveSystemProperty(name, options.getOrDefault(name, ''))
+        if (value) {
+            task.systemProperty(name, value)
+        }
+    }
 }
 
 tasks.register('unpackProcessingNatives', Sync) {
     def platform = processingNativePlatform()
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from({
-        fileTree(dir: 'library/processing', include: [
-                "gluegen-rt-natives-${platform}.jar",
-                "jogl-all-natives-${platform}.jar"
-        ]).collect { zipTree(it) }
+        // Source natives from the resolved JOGL/GlueGen artifacts so the
+        // dylibs always match the jar version on the classpath.
+        configurations.runtimeClasspath.filter { file ->
+            file.name ==~ /(gluegen-rt|jogl-all)-[\d.]+(-rc\d*)?-natives-${platform}\.jar/
+        }.collect { zipTree(it) }
     })
     into layout.buildDirectory.dir('processing-natives')
 }
@@ -201,6 +210,23 @@ discoverSceneNames().each { sceneName ->
                 sceneClass: "directions.scenes.${sceneName}"
         ])
     }
+    tasks.register("export${sceneName}", JavaExec) {
+        group = "application"
+        description = "Exports ${sceneName} to output/${sceneName}.mp4 in a hidden window, as fast as frames render."
+        classpath = sourceSets.main.runtimeClasspath
+        mainClass.set(javaMainClass)
+        configureMainRunTask(it, [
+                recordVideo: 'true',
+                videoPath: "output/${sceneName}.mp4",
+                holdOnFinish: 'false',
+                exportFps: '60',
+                ffmpegPreset: 'veryfast',
+                // Pin the canvas to RenderConfig defaults (1920x1080) so the
+                // export resolution does not depend on the attached display.
+                fullscreen: 'false',
+                sceneClass: "directions.scenes.${sceneName}"
+        ])
+    }
 }
 
 tasks.withType(JavaExec).configureEach {
@@ -237,4 +263,10 @@ task createPom {
             }
         }.writeTo("pom.xml")
     }
+}
+
+tasks.register('printRuntimeClasspath') {
+    group = "help"
+    description = "Prints the runtime classpath, for launching the sketch outside Gradle."
+    doLast { println sourceSets.main.runtimeClasspath.asPath }
 }
