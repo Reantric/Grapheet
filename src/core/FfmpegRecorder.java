@@ -10,20 +10,29 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 public final class FfmpegRecorder {
     private static final int IO_BUFFER_SIZE = 1 << 20;
+    // Frames in flight between the sketch thread and the writer thread.
+    // Enough to absorb encode hiccups; small enough to bound memory.
+    private static final int FRAME_QUEUE_CAPACITY = 3;
+    private static final int[] END_OF_STREAM = new int[0];
 
     private final PApplet applet;
     private final String outputFilePath;
 
     private String ffmpegPath = "";
     private int crf = 15;
+    private String preset = "medium";
     private float frameRate = 30f;
-    private byte[] rgbBuffer;
     private Process process;
     private OutputStream ffmpegInput;
+    private ArrayBlockingQueue<int[]> frameQueue;
+    private ArrayBlockingQueue<int[]> recycledFrames;
+    private Thread writerThread;
+    private volatile Throwable writerFailure;
     private boolean started;
     private boolean finished;
 
@@ -55,6 +64,13 @@ public final class FfmpegRecorder {
         this.frameRate = frameRate;
     }
 
+    public void setPreset(String preset) {
+        guardNotStarted("setPreset");
+        if (preset != null && !preset.trim().isEmpty()) {
+            this.preset = preset.trim();
+        }
+    }
+
     public void startMovie() {
         if (started) {
             return;
@@ -68,6 +84,11 @@ public final class FfmpegRecorder {
                     .redirectError(ProcessBuilder.Redirect.INHERIT)
                     .start();
             ffmpegInput = new BufferedOutputStream(process.getOutputStream(), IO_BUFFER_SIZE);
+            frameQueue = new ArrayBlockingQueue<>(FRAME_QUEUE_CAPACITY);
+            recycledFrames = new ArrayBlockingQueue<>(FRAME_QUEUE_CAPACITY + 1);
+            writerThread = new Thread(this::writeQueuedFrames, "ffmpeg-frame-writer");
+            writerThread.setDaemon(true);
+            writerThread.start();
             started = true;
         } catch (IOException e) {
             throw new IllegalStateException(
@@ -81,24 +102,60 @@ public final class FfmpegRecorder {
         if (!started || finished) {
             return;
         }
+        rethrowWriterFailure();
 
+        // The sketch thread only snapshots the pixel array; RGB packing and
+        // the (potentially blocking) pipe write happen on the writer thread,
+        // overlapping with the next frame's draw.
         applet.loadPixels();
         int pixelCount = applet.pixelWidth * applet.pixelHeight;
-        ensureBufferCapacity(pixelCount * 3);
-
-        int[] pixels = applet.pixels;
-        int bufferIndex = 0;
-        for (int i = 0; i < pixelCount; i++) {
-            int argb = pixels[i];
-            rgbBuffer[bufferIndex++] = (byte) ((argb >> 16) & 0xff);
-            rgbBuffer[bufferIndex++] = (byte) ((argb >> 8) & 0xff);
-            rgbBuffer[bufferIndex++] = (byte) (argb & 0xff);
+        int[] frame = recycledFrames.poll();
+        if (frame == null || frame.length != pixelCount) {
+            frame = new int[pixelCount];
         }
+        System.arraycopy(applet.pixels, 0, frame, 0, pixelCount);
 
         try {
-            ffmpegInput.write(rgbBuffer, 0, bufferIndex);
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to write a frame to ffmpeg for " + outputFilePath, e);
+            frameQueue.put(frame);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while queueing a frame for " + outputFilePath, e);
+        }
+    }
+
+    private void writeQueuedFrames() {
+        byte[] rgbBuffer = null;
+        try {
+            while (true) {
+                int[] frame = frameQueue.take();
+                if (frame == END_OF_STREAM) {
+                    return;
+                }
+                int byteCount = frame.length * 3;
+                if (rgbBuffer == null || rgbBuffer.length < byteCount) {
+                    rgbBuffer = new byte[byteCount];
+                }
+                int bufferIndex = 0;
+                for (int argb : frame) {
+                    rgbBuffer[bufferIndex++] = (byte) ((argb >> 16) & 0xff);
+                    rgbBuffer[bufferIndex++] = (byte) ((argb >> 8) & 0xff);
+                    rgbBuffer[bufferIndex++] = (byte) (argb & 0xff);
+                }
+                recycledFrames.offer(frame);
+                ffmpegInput.write(rgbBuffer, 0, byteCount);
+            }
+        } catch (Throwable e) {
+            // Any writer death must set the failure sentinel and unblock a
+            // producer waiting in put(), or the sketch thread hangs forever.
+            writerFailure = e;
+            frameQueue.clear();
+        }
+    }
+
+    private void rethrowWriterFailure() {
+        Throwable failure = writerFailure;
+        if (failure != null) {
+            throw new IllegalStateException("Failed to write a frame to ffmpeg for " + outputFilePath, failure);
         }
     }
 
@@ -107,6 +164,27 @@ public final class FfmpegRecorder {
             return;
         }
         finished = true;
+
+        if (writerThread != null) {
+            try {
+                if (writerFailure == null
+                        && frameQueue.offer(END_OF_STREAM, 10, TimeUnit.SECONDS)) {
+                    writerThread.join(30_000);
+                }
+                if (writerThread.isAlive()) {
+                    // The writer is wedged in a pipe write (ffmpeg stalled).
+                    // Killing the process breaks the pipe: the blocked write
+                    // throws, the writer exits and releases the stream lock —
+                    // otherwise close() below would deadlock on that lock.
+                    // waitForEncoderExit() then reports the failure loudly.
+                    process.destroyForcibly();
+                    writerThread.join(10_000);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                process.destroyForcibly();
+            }
+        }
 
         IOException closeFailure = null;
         if (ffmpegInput != null) {
@@ -127,6 +205,7 @@ public final class FfmpegRecorder {
         if (closeFailure != null) {
             throw new IllegalStateException("Failed while finalizing recording for " + outputFilePath, closeFailure);
         }
+        rethrowWriterFailure();
     }
 
     public void dispose() {
@@ -186,6 +265,8 @@ public final class FfmpegRecorder {
         command.add("yuv420p");
         command.add("-vf");
         command.add("pad=ceil(iw/2)*2:ceil(ih/2)*2");
+        command.add("-preset");
+        command.add(preset);
         command.add("-crf");
         command.add(Integer.toString(crf));
         command.add(outputFilePath);
@@ -220,12 +301,6 @@ public final class FfmpegRecorder {
             Thread.currentThread().interrupt();
             process.destroyForcibly();
             throw new IllegalStateException("Interrupted while finalizing recording for " + outputFilePath, e);
-        }
-    }
-
-    private void ensureBufferCapacity(int size) {
-        if (rgbBuffer == null || rgbBuffer.length != size) {
-            rgbBuffer = new byte[size];
         }
     }
 

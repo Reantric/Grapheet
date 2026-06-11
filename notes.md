@@ -118,3 +118,32 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `./gradlew runTestScene`
   - `./gradlew runTestScene -Dfullscreen=false`
   - `./gradlew runTestScene -DvideoPath=output/custom-name.mp4`
+- Export a scene in a hidden window, decoupled from wall time:
+  - `./gradlew exportTestScene` (preview), add `-DpixelDensity=2
+    -DffmpegPreset=medium` for the final 3840x2160 render.
+  - `-DexportFps=<n>` (min 10) switches the scene clock from wall time to a
+    fixed `1/n`s step per frame, the recorder stamps frames at `n` fps, the
+    draw loop is uncapped, the JAVA2D surface is hidden (P2D stays visible —
+    JOGL's animator stops driving hidden NEWT windows), and the app exits on
+    finish. The video timeline is identical to a realtime run regardless of
+    render speed; wall-clock speed varies with per-frame scene complexity.
+  - Export tasks pin the canvas to 1920x1080 (`fullscreen=false`) so output
+    resolution does not depend on the attached display.
+  - Recording captures at `pixelDensity(1)` by default (retina density 2
+    quadruples the pixel work and used to make realtime recordings play
+    ~2.5x fast because the sketch fell below the stamped 60fps); with the
+    fixed-timestep export, `-DpixelDensity=2` is safe and is the
+    high-quality path.
+  - Recorder is an async pipe: the sketch thread snapshots pixels, a writer
+    thread packs RGB and feeds ffmpeg; a stalled/dead ffmpeg fails loudly
+    (process killed, exception surfaced, JVM exits nonzero) instead of
+    hanging or silently truncating the file.
+  - `exportFps`, `msPerDay`, `hideSurface`, `pixelDensity`, `ffmpegPreset`,
+    and `maxFrames` are forwarded by the run/export Gradle tasks when passed
+    as `-D` flags (previously `-DmsPerDay` was documented but silently not
+    forwarded; its consumer is the CS2 race scene branch).
+  - macOS P2D requires Processing core 4.5.x + JOGL 2.6.0 (JogAmp Bug 1528:
+    older JOGL SIGTRAPs in NSWindow teardown on macOS 26). Natives unpack
+    from the resolved Maven artifacts, not the vendored library/ jars. P2D
+    measured SLOWER than JAVA2D for export on M1 Pro (sync glReadPixels +
+    60fps animator pin); use JAVA2D here, test P2D on a discrete-GPU box.

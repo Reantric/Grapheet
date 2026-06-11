@@ -3,6 +3,7 @@ import core.FfmpegRecorder;
 import core.RenderConfig;
 import directions.SceneRegistry;
 import directions.engine.Director;
+import directions.engine.SceneContext;
 import processing.core.PApplet;
 import processing.event.MouseEvent;
 
@@ -16,6 +17,7 @@ public class Main extends Applet {
     private boolean holdOnFinish;
     private boolean finishReported;
     private boolean movieClosed;
+    private int maxFrames;
 
     public void setup(){
         String commonPath = "src/data/";
@@ -27,8 +29,14 @@ public class Main extends Applet {
         );
         director = SceneRegistry.create(this);
 
-        recordVideo = Boolean.getBoolean("recordVideo");
-        holdOnFinish = Boolean.getBoolean("holdOnFinish");
+        float exportFps = SceneContext.configuredExportFps();
+        // Export implies recording unless explicitly disabled (draw-speed benchmarks).
+        recordVideo = exportFps > 0f
+                ? !"false".equalsIgnoreCase(System.getProperty("recordVideo", ""))
+                : Boolean.getBoolean("recordVideo");
+        // An export has no operator watching, so it always exits when done.
+        holdOnFinish = Boolean.getBoolean("holdOnFinish") && exportFps <= 0f;
+        maxFrames = Integer.getInteger("maxFrames", 0);
         if (recordVideo) {
             String videoPath = resolveVideoPath();
             videoRecorder = new FfmpegRecorder(this, videoPath);
@@ -37,13 +45,28 @@ public class Main extends Applet {
                 videoRecorder.setFfmpegPath(ffmpegPath);
             }
             videoRecorder.setQuality(85, 0);
-            videoRecorder.setFrameRate(60);
+            videoRecorder.setPreset(System.getProperty("ffmpegPreset", ""));
+            videoRecorder.setFrameRate(exportFps > 0f ? exportFps : 60f);
             videoRecorder.startMovie();
             System.out.println("Recording video to " + videoPath);
         }
 
-        frameRate(60);
-        //surface.setVisible(false);
+        if (exportFps > 0f) {
+            // The scene clock is the fixed export timestep, so the draw loop
+            // can run as fast as frames render without changing the video.
+            frameRate(1000);
+            System.out.println("Offline export: " + exportFps + "fps timeline, uncapped render speed");
+        } else {
+            frameRate(60);
+        }
+        // Exports hide the window by default; -DhideSurface=false keeps it
+        // visible. P2D is never hidden: JOGL's animator stops driving a
+        // hidden NEWT window, which stalls the sketch before the first frame.
+        String hideSurface = System.getProperty("hideSurface", "").trim();
+        boolean wantHide = hideSurface.isEmpty() ? exportFps > 0f : Boolean.parseBoolean(hideSurface);
+        if (wantHide && !useP2DRenderer) {
+            surface.setVisible(false);
+        }
     }
 
 
@@ -64,11 +87,22 @@ public class Main extends Applet {
                 size(RenderConfig.DEFAULT_WIDTH, RenderConfig.DEFAULT_HEIGHT);
             }
         }
+        // Retina capture (density 2) quadruples the pixels the software
+        // renderer and the ffmpeg pipe must push, dropping the sketch below
+        // the 60fps the recorder stamps frames at — the video plays fast.
+        pixelDensity(Integer.getInteger("pixelDensity", 1));
         smooth(8);
     }
 
 
     public static void main(String[] passedArgs) {
+        // On macOS, JOGL's NEWT marshals window operations to the AppKit main
+        // thread and traps if no NSApplication owns it yet. AWT's Toolkit init
+        // claims AppKit exactly once, first — JOGL then routes onto its loop.
+        if ("P2D".equalsIgnoreCase(System.getProperty("renderer", ""))
+                && System.getProperty("os.name", "").toLowerCase().contains("mac")) {
+            java.awt.Toolkit.getDefaultToolkit();
+        }
         String[] appletArgs = new String[]{Main.class.getCanonicalName()};
         if (passedArgs != null) {
             PApplet.main(concat(appletArgs, passedArgs));
@@ -83,7 +117,21 @@ public class Main extends Applet {
         init();
         boolean finished = director.drawFrame();
         if (recordVideo) {
-            videoRecorder.saveFrame();
+            try {
+                videoRecorder.saveFrame();
+            } catch (RuntimeException e) {
+                // A dead recorder must end the run: an escaped exception only
+                // kills the animation thread, leaving a hidden window and a
+                // live JVM — an unattended export would hang forever.
+                e.printStackTrace();
+                System.exit(1);
+            }
+        }
+
+        if (maxFrames > 0 && frameCount >= maxFrames) {
+            System.out.println("Reached maxFrames=" + maxFrames + " after " + millis() + "ms");
+            stopRecordingAndExit();
+            return;
         }
 
         if (finished) {
@@ -127,9 +175,14 @@ public class Main extends Applet {
     }
 
     private void stopRecordingAndExit() {
-        if (recordVideo && !movieClosed) {
-            videoRecorder.endMovie();
-            movieClosed = true;
+        try {
+            if (recordVideo && !movieClosed) {
+                videoRecorder.endMovie();
+                movieClosed = true;
+            }
+        } catch (RuntimeException e) {
+            e.printStackTrace();
+            System.exit(1);
         }
         exit();
     }
