@@ -131,12 +131,42 @@ This file is the handoff context for future Codex sessions. Read it before start
   `DataGrid.setLabelFont`), falling back to logical SansSerif. No font file
   is bundled; install Lato for the exact reference look. Head dots are plain
   white per the reference; ratings display 2dp like HLTV.
+- HUD blocks (leader header, Current Date) sit on translucent 2DGP-style
+  backing panels sized to their text.
+- The bottom x axis is the world-space "ground" line at the y anchor
+  (rating 1.0): the scene starts with its y-window grounded so the axis is
+  visible, then it falls off the bottom and dissolves as the camera lifts.
+  The left-rail collapse is a RATCHET (`DataGrid.setRailCollapseRatchet`):
+  once the camera follows past the world y-axis it never reappears, even
+  during the final zoom-out. TestScene does not enable the ratchet.
+- The final zoom-out pins the race head to its screen position: xMin eases
+  back to day zero while the span solves for a constant head fraction, so
+  dots and labels stay put and only the history compresses behind them.
+- Head labels: one shared column anchored at the midpoint of the race-front
+  head dots; only tracks with data within FRONT_TOLERANCE_DAYS (10) of "now"
+  join the column/queue — retired lines keep their fading label at their own
+  line end (the wider 45-day RANK_GRACE_DAYS is for ranking only; using it
+  for the column once dragged all labels back onto the dots). Vertical
+  placement is least-displacement min-gap spreading via
+  pool-adjacent-violators isotonic regression, applied to targets AND to the
+  eased displayed positions every frame: isolated labels sit exactly at
+  their dot, conflicting groups centre on their dots' mean, and labels can
+  never render intersecting — overtakes squeeze to the gap and slide past.
+- Grid density: quarter majors with soft month minors (calendar grid ideal
+  340px, plateau 0.5, support 1.85), years take over after the zoom-out;
+  y sub-base minors stay hidden until genuinely zoomed in (ramp 110-190px),
+  matching the pre-rework branch's single dominant rhythm. Minor stroke
+  floor lifted (brightness 34, alpha 28) for visibility on ordinary
+  displays. There are intentionally no sub-0.05 horizontal minors at the
+  default zoom — original Grapheet behaved the same way.
 - Data pipeline: `src/data/cs2/top_players_rolling.csv` (player,team,color,
   date,rating weekly knots). `tools/generate_cs2_mock_data.py` produces
   realistic mock data (match-level noise -> 90-day rolling average; career
-  arcs hand-tuned to reality through mid-2025). `tools/scrape_hltv.py` is an
-  unverified best-effort real scraper (HLTV is Cloudflare-protected; run it
-  from a residential IP) that emits the same CSV schema.
+  arcs hand-tuned to reality through mid-2025). Regeneration is
+  deterministic and byte-identical to the committed CSV (LF endings).
+  `tools/scrape_hltv.py` is an unverified best-effort real scraper (HLTV is
+  Cloudflare-protected; run it from a residential IP) that emits the same
+  CSV schema.
 - Verified in a headless Linux sandbox: full compile (ECJ, release 21) and
   recorded runs of both `Cs2TopPlayersScene` and `TestScene` under
   Xvfb/JAVA2D with frame-by-frame visual inspection. Known cosmetic niceties

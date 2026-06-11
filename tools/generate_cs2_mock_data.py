@@ -114,7 +114,7 @@ def main() -> None:
     print(f"wrote {len(rows)} knots -> {os.path.normpath(OUT)}")
     for p, rs in by_player.items():
         print(f"  {p:8s} {rs[0][3]} .. {rs[-1][3]}  ({len(rs)} knots, "
-              f"min {min(x[4] for x in rs):.3f}, max {max(x[4] for x in rs):.3f}")
+              f"min {min(x[4] for x in rs):.3f}, max {max(x[4] for x in rs):.3f})")
 
 
 if __name__ == "__main__":

@@ -36,7 +36,9 @@ def rolling_knots(matches: list[tuple[date, float]]) -> list[tuple[date, float]]
 
 def write_knots_csv(path: str, rows: list[tuple[str, str, str, date, float]]) -> None:
     with open(path, "w", newline="") as f:
-        w = csv.writer(f)
+        # LF line endings so regenerating never produces a whole-file diff
+        # against the committed CSV.
+        w = csv.writer(f, lineterminator="\n")
         w.writerow(["player", "team", "color", "date", "rating"])
         for player, team, color, d, rating in rows:
             w.writerow([player, team, color, d.isoformat(), f"{rating:.4f}"])
