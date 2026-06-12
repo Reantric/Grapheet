@@ -265,9 +265,21 @@ This file is the handoff context for future Codex sessions. Read it before start
   with the Current Date panel). drawSeries clamps lines/dots at plot
   bottom + 30px (soft floor): lines may dip below the grounded 1.0 axis
   instead of flattening against it.
-- Numeric label ideal spacing is 150px (of 1920): at 112 the 0.05 y band
-  held on to ~92px spacing, which read as overcrowded before the hand-off
-  fired.
+- Numeric label ideal spacing is 175px (of 1920): smaller ideals let the
+  0.05 y band hold on to ~92-107px spacing, which read as overcrowded
+  before the hand-off fired.
+- The election bump curve is SYMMETRIC: rendered alphas are band-binary,
+  so the curve only drives the election — a sparse-side leniency there
+  meant a sparse coarse incumbent's raw never decayed and refinements
+  (fading finer labels back in when the window contracts) could never
+  unseat it. Refinement challengers also get a reduced stickiness
+  (LABEL_BAND_REFINE_STICKINESS 0.04 vs 0.12 for coarsening) — no flap
+  risk because the reverse trip still faces the full coarsening margin.
+- 1080p sizing pass: line stroke 5.2px (+1.8 leader boost), head dots
+  15px, player label text 38px, min gap 46px, logo box 36px; follow
+  camera capped at 0.83 with 56px extra label margin so dots/lines end
+  further left of the bigger labels. Fade-outs softened to 5.5/s (x) and
+  3.2/s (y).
 - NESTED band hand-offs are seamless (applyBandTransition): shared ticks
   must never blink out and refade. Coarsening (1->2, 5->10, quarter->year):
   the incoming band snaps to the outgoing band's alpha and only the dying

@@ -54,8 +54,8 @@ public final class Cs2TopPlayersScene extends Scene {
      *  the whole label block always fits between the head dots and the
      *  viewport edge; a fixed fraction left the column clamped onto the
      *  line tails whenever a long name entered the race. */
-    private static final double MAX_FOLLOW_RATIO = 0.86;
-    private static final float LABEL_MARGIN_EXTRA_PX = 24f;
+    private static final double MAX_FOLLOW_RATIO = 0.83;
+    private static final float LABEL_MARGIN_EXTRA_PX = 56f;
     private static final double FINAL_ZOOM_DELAY = 0.6;
     private static final double FINAL_ZOOM_DURATION = 5.0;
     private static final double END_HOLD_SECONDS = 4.0;
@@ -64,13 +64,15 @@ public final class Cs2TopPlayersScene extends Scene {
     private static final double Y_FIT_SAMPLE_DAYS = 5.0;
     private static final float Y_FIT_EASE_RATE = 2.2f;
     private static final float LABEL_EASE_RATE = 6f;
-    private static final float LABEL_TEXT_SIZE = 34f;
-    private static final float LABEL_MIN_GAP_PX = 40f;
+    private static final float LABEL_TEXT_SIZE = 38f;
+    private static final float LABEL_MIN_GAP_PX = 46f;
     /** Horizontal gap between a head dot and the start of its label block. */
     private static final float LABEL_DOT_GAP_PX = 34f;
     /** Square box the head-label team logo is fitted into. */
-    private static final float LABEL_LOGO_BOX_PX = 32f;
+    private static final float LABEL_LOGO_BOX_PX = 36f;
     private static final float LABEL_LOGO_SPACE_PX = LABEL_LOGO_BOX_PX + 9f;
+    private static final float LINE_STROKE_PX = 5.2f;
+    private static final float HEAD_DOT_PX = 15f;
     private static final float RETIRE_LINE_FADE_DAYS = 60f;
     private static final float RETIRE_LABEL_FADE_SECONDS = 1.0f;
     /**
@@ -390,7 +392,7 @@ public final class Cs2TopPlayersScene extends Scene {
 
             p.noFill();
             strokeTrack(track, lineAlpha);
-            p.strokeWeight(4f + 1.8f * track.strokeBoost);
+            p.strokeWeight(LINE_STROKE_PX + 1.8f * track.strokeBoost);
             p.beginShape();
             for (double d = lo; d < hi; d += stepDays) {
                 p.vertex(grid.domainToCanvasX(d),
@@ -406,7 +408,7 @@ public final class Cs2TopPlayersScene extends Scene {
                 // Reference style: plain white head dot.
                 p.noStroke();
                 p.fill(0, 0, 100, lineAlpha);
-                p.circle(hx, hy, 13f + 3f * track.strokeBoost);
+                p.circle(hx, hy, HEAD_DOT_PX + 3f * track.strokeBoost);
             }
         }
     }

@@ -45,9 +45,6 @@ public final class DataGrid {
     private static final float ALPHA_EPSILON = 0.02f;
     private static final float BOTTOM_AXIS_FALL_FADE_PX = 36f;
     private static final float Y_AXIS_EXIT_FADE_PX = 48f;
-    /** Sparse-side fade reach shared by every bump curve (see bumpAlpha). */
-    private static final float SPARSE_SUPPORT_LOG2 = 2.2f;
-
     // Label crossfades are TIME-based and exactly ONE family per axis is
     // the live "label band": the position-derived bump alphas only elect
     // the band (the incumbent keeps it unless a challenger clearly beats
@@ -61,9 +58,18 @@ public final class DataGrid {
      *  compressing toward their neighbours, so the ghost-overlap window
      *  must be short. The y axis has no such pressure and reads better
      *  with a gentler exit. */
-    private static final float X_LABEL_FADE_OUT_RATE = 7f;
-    private static final float Y_LABEL_FADE_OUT_RATE = 4.2f;
+    private static final float X_LABEL_FADE_OUT_RATE = 5.5f;
+    private static final float Y_LABEL_FADE_OUT_RATE = 3.2f;
+    /** Hysteresis for a COARSER challenger taking the band (and general
+     *  anti-flap margin). */
     private static final float LABEL_BAND_STICKINESS = 0.12f;
+    /** A FINER challenger only needs a tiny edge: refinements (fading
+     *  detail back in when the window contracts) were effectively
+     *  unreachable behind the full stickiness, because a sparse incumbent's
+     *  raw alpha rarely drops far below a near-ideal finer family's. At
+     *  0.02 (with ideal 175) the y band refines at ~127px base spacing and
+     *  coarsens at ~118px — a clean hysteresis gap, no flap zone. */
+    private static final float LABEL_BAND_REFINE_STICKINESS = 0.02f;
     /** Below this raw alpha the incumbent's labels are getting physically
      *  cramped — it loses its stickiness and even concedes a small bias to
      *  the challenger, so the hand-off fires BEFORE full-brightness labels
@@ -82,7 +88,10 @@ public final class DataGrid {
     // canvas and are scaled by densityScale() at use, so a 1280px rough cut
     // and a 3840px final pick the same tick families as the 1920px design.
     private static final float REFERENCE_CANVAS_WIDTH = 1920f;
-    private static final float LABEL_IDEAL_SPACING_PX = 150f;
+    /** Calibrated against the user's two reference frames: the y band must
+     *  coarsen by ~104px base spacing (raw < 0.88 vs a full challenger)
+     *  and refine again above ~111px (incumbent raw < 0.98 + refine edge). */
+    private static final float LABEL_IDEAL_SPACING_PX = 154f;
     private static final float LABEL_PLATEAU_LOG2 = 0.5f;
     private static final float LABEL_SUPPORT_LOG2 = 0.95f;
 
@@ -653,8 +662,13 @@ public final class DataGrid {
             }
         }
         if (incumbent >= 0) {
+            // Keys are ordered finest-first: a challenger at a smaller index
+            // is a refinement and only needs a small edge.
+            float stickiness = best < incumbent
+                    ? LABEL_BAND_REFINE_STICKINESS
+                    : LABEL_BAND_STICKINESS;
             float bias = rawAlphas[incumbent] >= LABEL_BAND_CRAMP_FLOOR
-                    ? LABEL_BAND_STICKINESS
+                    ? stickiness
                     : -0.05f;
             if (rawAlphas[incumbent] + bias >= rawAlphas[best]) {
                 return keys[incumbent];
@@ -781,27 +795,25 @@ public final class DataGrid {
 
     /**
      * Continuous fade curve: full alpha while the family's pixel spacing is
-     * within {@code plateauLog2} octaves of the ideal spacing, easing to zero
-     * at {@code supportLog2} octaves on the cramped side. The sparse side
-     * decays much more slowly ({@code SPARSE_SUPPORT_LOG2} octaves): sparse
-     * ticks are clean, cramped ticks are the actual problem — and the base
-     * family of an axis has no coarser stand-in, so dimming it for mere
-     * sparseness left the whole rail grey at tight windows.
+     * within {@code plateauLog2} octaves of the ideal spacing, easing to
+     * zero at {@code supportLog2} octaves. Symmetric: rendered alphas are
+     * band-binary nowadays, so this curve only drives the band ELECTION —
+     * and there a sparse-side leniency is harmful, because a sparse coarse
+     * incumbent whose raw never decays can never be unseated by a finer
+     * family when the window contracts (the "reverse" fade-in).
      */
     private float bumpAlpha(float spacingPx, float idealPx, float plateauLog2, float supportLog2) {
         if (spacingPx <= 0f) {
             return 0f;
         }
-        float signed = (float) (Math.log(spacingPx / idealPx) / Math.log(2));
-        float u = Math.abs(signed);
-        float support = signed > 0f ? SPARSE_SUPPORT_LOG2 : supportLog2;
+        float u = Math.abs((float) (Math.log(spacingPx / idealPx) / Math.log(2)));
         if (u <= plateauLog2) {
             return 1f;
         }
-        if (u >= support) {
+        if (u >= supportLog2) {
             return 0f;
         }
-        return 1f - smoothstep((u - plateauLog2) / (support - plateauLog2));
+        return 1f - smoothstep((u - plateauLog2) / (supportLog2 - plateauLog2));
     }
 
     // ------------------------------------------------------------------
