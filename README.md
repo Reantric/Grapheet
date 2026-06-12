@@ -61,7 +61,11 @@ Export a scene without watching it:
 ```sh
 ./gradlew exportTestScene                                    # preview: 1920x1080, fast
 ./gradlew exportTestScene -DpixelDensity=2 -DffmpegPreset=medium   # final: 3840x2160, slower
+./gradlew exportTestScene -DrenderWidth=1280 -DrenderHeight=720 -DexportFps=30 -DffmpegPreset=ultrafast  # rough cut: fastest
+./gradlew exportTestScene -DrenderWidth=3840 -DrenderHeight=2160 -DffmpegPreset=medium   # 4K on non-retina machines
 ```
+
+`-DrenderWidth`/`-DrenderHeight` set the canvas size directly for windowed runs (the layout scales with the canvas, so a 720p rough cut is proportioned differently than 1080p — fine for pacing checks, not for final framing). `-DexportFps=30` halves the frame count for another ~2x.
 
 `export<SceneName>` tasks render in a hidden window on a fixed 60fps timeline: the scene clock advances exactly 1/60s per frame instead of wall time, so the output video plays at the same speed as a realtime run no matter how fast or slow frames actually draw. Wall-clock speed varies with scene complexity (sparse early frames render faster than busy late ones) — the video timeline does not. The canvas is pinned to 1920x1080 so output does not depend on the attached display.
 
