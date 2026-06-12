@@ -55,7 +55,7 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `videoPath`
   - `holdOnFinish`
   - `sceneClass`
-- The old bundled `VideoExport.jar` is not Processing 4 compatible because it reads the removed `PApplet.frame` field; runtime recording now uses `src/core/FfmpegRecorder.java` instead of the library jar.
+- The old bundled `VideoExport.jar` (since removed from the repo) is not Processing 4 compatible because it reads the removed `PApplet.frame` field; runtime recording now uses `src/core/FfmpegRecorder.java` instead of the library jar.
 - Recording expects `ffmpeg` on `PATH` by default, and can be overridden with `-DffmpegPath=/absolute/path/to/ffmpeg`.
 - `Main` now defaults recordings to `output/<ResolvedSceneName>.mp4`, prints the active recording path at startup, and lets `FfmpegRecorder` create parent directories automatically.
 - When `holdOnFinish=true`, the director keeps re-rendering the final scene frame after completion so the ffmpeg recorder can continue capturing until the operator presses `q`.
@@ -237,6 +237,7 @@ This file is the handoff context for future Codex sessions. Read it before start
     canvas, so rough cuts are for pacing checks, not final framing.
   - macOS P2D requires Processing core 4.5.x + JOGL 2.6.0 (JogAmp Bug 1528:
     older JOGL SIGTRAPs in NSWindow teardown on macOS 26). Natives unpack
-    from the resolved Maven artifacts, not the vendored library/ jars. P2D
+    from the resolved Maven artifacts (the vendored library/ jars were
+    removed). P2D
     measured SLOWER than JAVA2D for export on M1 Pro (sync glReadPixels +
     60fps animator pin); use JAVA2D here, test P2D on a discrete-GPU box.
