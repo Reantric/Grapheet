@@ -476,11 +476,19 @@ public final class DataGrid {
                     labelFadeStates, gridFadeStates, previousBand, band, lingering, nesting);
         }
 
-        // Gridlines follow the band: band lines are the majors, the family
-        // one step finer fades in as soft minors when the band's spacing
-        // leaves room, everything else dies with its labels.
+        // Gridlines follow the band: band lines are the majors, the nearest
+        // finer family whose step DIVIDES the band step fades in as soft
+        // minors when the band's spacing leaves room (a non-dividing rung —
+        // 0.02 under a 0.05 band — would lay an irregular rhythm against
+        // the majors), everything else dies with its labels.
         int bandIndex = (Integer) band;
-        float bandSpacingPx = (float) (pixelSpan * (niceStep(baseStep, bandIndex) / span));
+        double bandStep = niceStep(baseStep, bandIndex);
+        float bandSpacingPx = (float) (pixelSpan * (bandStep / span));
+        int minorIndex = bandIndex - 1;
+        while (minorIndex > bandIndex - 4
+                && !isIntegerMultiple(bandStep, niceStep(baseStep, minorIndex))) {
+            minorIndex--;
+        }
         float minorTarget = MINOR_GRID_STRENGTH * subBaseRamp(bandSpacingPx,
                 SUB_BASE_GRID_RAMP_START_PX * scale, SUB_BASE_GRID_RAMP_END_PX * scale);
 
@@ -491,7 +499,7 @@ public final class DataGrid {
             int index = firstIndex + i;
             boolean on = fadeKeys[i].equals(band) || fadeKeys[i].equals(lingering);
             labelAlphas[i] = fadedAlpha(labelFadeStates, fadeKeys[i], on ? 1f : 0f, outRate);
-            float gridTarget = on ? 1f : (index == bandIndex - 1 ? minorTarget : 0f);
+            float gridTarget = on ? 1f : (index == minorIndex ? minorTarget : 0f);
             gridAlphas[i] = fadedAlpha(gridFadeStates, fadeKeys[i], gridTarget, outRate);
         }
         lingering = releaseLingerWhenCovered(labelFadeStates, gridFadeStates, band, lingering);
@@ -539,8 +547,11 @@ public final class DataGrid {
                     tick = new Tick(snapped, formatter.apply(cleanZero(snapped)));
                     merged.put(key, tick);
                 }
-                tick.gridAlpha = Math.max(tick.gridAlpha, gridAlpha);
-                tick.labelAlpha = Math.max(tick.labelAlpha, labelAlpha);
+                // Capped SUM, not max: during a non-nested crossfade (0.5 ->
+                // 0.2) a tick shared by both families (2.00) must hold full
+                // alpha — under max it dipped to ~0.5 mid-fade and blinked.
+                tick.gridAlpha = Math.min(1f, tick.gridAlpha + gridAlpha);
+                tick.labelAlpha = Math.min(1f, tick.labelAlpha + labelAlpha);
             }
         }
         return new ArrayList<>(merged.values());
@@ -590,15 +601,21 @@ public final class DataGrid {
         }
         xLabelBandKey = band;
 
-        // Gridlines follow the band (majors = band, soft minors = the next
-        // finer family while the band's spacing leaves room, rest fade out).
+        // Gridlines follow the band (majors = band, soft minors = the
+        // nearest finer family that NESTS into the band — skipping
+        // two-year under a five-year band — while the band's spacing
+        // leaves room; the rest fade out).
         CalendarFamily bandFamily = (CalendarFamily) band;
         float bandSpacingPx = (float) (plotWidth * (bandFamily.averageDays / span));
         float minorTarget = MINOR_GRID_STRENGTH * subBaseRamp(bandSpacingPx,
                 SUB_BASE_GRID_RAMP_START_PX * scale, SUB_BASE_GRID_RAMP_END_PX * scale);
-        CalendarFamily minorFamily = bandFamily.ordinal() > 0
-                ? families[bandFamily.ordinal() - 1]
-                : null;
+        CalendarFamily minorFamily = null;
+        for (int i = bandFamily.ordinal() - 1; i >= 0; i--) {
+            if (calendarNesting(bandFamily, families[i]) == Nesting.OLD_WITHIN_NEW) {
+                minorFamily = families[i];
+                break;
+            }
+        }
 
         float[] labelAlphas = new float[families.length];
         float[] gridAlphas = new float[families.length];
@@ -634,8 +651,10 @@ public final class DataGrid {
                     tick = new Tick(day, calendarLabel(date));
                     merged.put(day, tick);
                 }
-                tick.gridAlpha = Math.max(tick.gridAlpha, gridAlpha);
-                tick.labelAlpha = Math.max(tick.labelAlpha, labelAlpha);
+                // Capped SUM, not max — see the numeric merge: shared ticks
+                // must hold full alpha through non-nested crossfades.
+                tick.gridAlpha = Math.min(1f, tick.gridAlpha + gridAlpha);
+                tick.labelAlpha = Math.min(1f, tick.labelAlpha + labelAlpha);
                 date = family.next(date);
             }
         }
