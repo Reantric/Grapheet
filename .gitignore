@@ -22,3 +22,4 @@ test/
 hs_err_pid*.log
 src/data/Lato-Bold.ttf:Zone.Identifier
 src/data/Lato-Regular.ttf:Zone.Identifier
+__pycache__/

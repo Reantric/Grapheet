@@ -14,23 +14,38 @@ KNOT_EVERY_DAYS = 7       # emit one knot per week
 MIN_MATCHES_IN_WINDOW = 8 # below this the rolling average is too noisy to trust
 
 
-def rolling_knots(matches: list[tuple[date, float]]) -> list[tuple[date, float]]:
-    """matches: (match_date, rating) sorted ascending. Returns weekly knots."""
+def rolling_knots(matches: list[tuple[date, float]],
+                  end: date | None = None) -> list[tuple[date, float]]:
+    """matches: (match_date, rating) sorted ascending. Returns weekly knots.
+
+    The final knot is always emitted exactly at `end` (default: the last
+    match date), so every player whose career reaches the dataset end gets
+    a line ending on the SAME day — the race scene draws all front lines to
+    a common x instead of scattering ends across each player's weekly grid.
+    """
     if not matches:
         return []
     matches = sorted(matches, key=lambda m: m[0])
     first, last = matches[0][0], matches[-1][0]
+    end = end or last
     knots: list[tuple[date, float]] = []
-    day = first + timedelta(days=WINDOW_DAYS // 2)
-    lo = 0
-    while day <= last:
+
+    def window_average(day: date) -> float | None:
         window_start = day - timedelta(days=WINDOW_DAYS)
-        while lo < len(matches) and matches[lo][0] < window_start:
-            lo += 1
-        in_window = [r for d, r in matches[lo:] if d <= day]
-        if len(in_window) >= MIN_MATCHES_IN_WINDOW:
-            knots.append((day, sum(in_window) / len(in_window)))
+        in_window = [r for d, r in matches if window_start <= d <= day]
+        if len(in_window) < MIN_MATCHES_IN_WINDOW:
+            return None
+        return sum(in_window) / len(in_window)
+
+    day = first + timedelta(days=WINDOW_DAYS // 2)
+    while day < end:
+        value = window_average(day)
+        if value is not None:
+            knots.append((day, value))
         day += timedelta(days=KNOT_EVERY_DAYS)
+    value = window_average(end)
+    if value is not None and (not knots or knots[-1][0] != end):
+        knots.append((end, value))
     return knots
 
 
