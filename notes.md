@@ -139,9 +139,15 @@ This file is the handoff context for future Codex sessions. Read it before start
     (process killed, exception surfaced, JVM exits nonzero) instead of
     hanging or silently truncating the file.
   - `exportFps`, `msPerDay`, `hideSurface`, `pixelDensity`, `ffmpegPreset`,
-    and `maxFrames` are forwarded by the run/export Gradle tasks when passed
-    as `-D` flags (previously `-DmsPerDay` was documented but silently not
-    forwarded; its consumer is the CS2 race scene branch).
+    `maxFrames`, `renderWidth`, and `renderHeight` are forwarded by the
+    run/export Gradle tasks when passed as `-D` flags (previously
+    `-DmsPerDay` was documented but silently not forwarded; its consumer is
+    the CS2 race scene branch).
+  - `renderWidth`/`renderHeight` size the windowed canvas directly: 4K
+    finals on non-retina machines (`-DrenderWidth=3840 -DrenderHeight=2160`)
+    or fast rough cuts (`-DrenderWidth=1280 -DrenderHeight=720
+    -DexportFps=30 -DffmpegPreset=ultrafast`). Layout scales with the
+    canvas, so rough cuts are for pacing checks, not final framing.
   - macOS P2D requires Processing core 4.5.x + JOGL 2.6.0 (JogAmp Bug 1528:
     older JOGL SIGTRAPs in NSWindow teardown on macOS 26). Natives unpack
     from the resolved Maven artifacts, not the vendored library/ jars. P2D

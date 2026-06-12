@@ -74,17 +74,26 @@ public class Main extends Applet {
         useP2DRenderer = "P2D".equalsIgnoreCase(System.getProperty("renderer", "JAVA2D"));
         useFullscreen = Boolean.parseBoolean(System.getProperty("fullscreen", "true"));
 
+        // Explicit canvas size for windowed runs: lets non-retina machines
+        // export at any resolution (e.g. 3840x2160 finals, 1280x720 previews).
+        int renderWidth = Integer.getInteger("renderWidth", RenderConfig.DEFAULT_WIDTH);
+        int renderHeight = Integer.getInteger("renderHeight", RenderConfig.DEFAULT_HEIGHT);
+        if (renderWidth <= 0 || renderHeight <= 0) {
+            throw new IllegalArgumentException(
+                    "renderWidth/renderHeight must be positive: " + renderWidth + "x" + renderHeight);
+        }
+
         if (useP2DRenderer) {
             if (useFullscreen) {
                 fullScreen(P2D);
             } else {
-                size(RenderConfig.DEFAULT_WIDTH, RenderConfig.DEFAULT_HEIGHT, P2D);
+                size(renderWidth, renderHeight, P2D);
             }
         } else {
             if (useFullscreen) {
                 fullScreen();
             } else {
-                size(RenderConfig.DEFAULT_WIDTH, RenderConfig.DEFAULT_HEIGHT);
+                size(renderWidth, renderHeight);
             }
         }
         // Retina capture (density 2) quadruples the pixels the software

@@ -128,7 +128,8 @@ def configureMainRunTask = { JavaExec task, Map defaults = [:] ->
     task.systemProperty("scene", resolveSystemProperty("scene", options.scene))
     task.systemProperty("sceneClass", resolveSystemProperty("sceneClass", options.sceneClass))
     // Optional tuning knobs: forwarded only when set, so app-side defaults apply.
-    ["exportFps", "msPerDay", "hideSurface", "pixelDensity", "ffmpegPreset", "maxFrames"].each { name ->
+    ["exportFps", "msPerDay", "hideSurface", "pixelDensity", "ffmpegPreset",
+     "maxFrames", "renderWidth", "renderHeight"].each { name ->
         def value = resolveSystemProperty(name, options.getOrDefault(name, ''))
         if (value) {
             task.systemProperty(name, value)
