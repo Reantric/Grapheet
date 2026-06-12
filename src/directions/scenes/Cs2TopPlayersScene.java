@@ -63,6 +63,16 @@ public final class Cs2TopPlayersScene extends Scene {
     private static final double Y_MIN_SPAN = 0.18;
     private static final double Y_FIT_SAMPLE_DAYS = 5.0;
     private static final float Y_FIT_EASE_RATE = 2.2f;
+    /**
+     * Age-weighted y-fit: data this close to "now" gets full framing
+     * weight; older extremes decay toward the recent range with the time
+     * constant below, so the camera follows the CURRENT race instead of
+     * holding the window open for a spike that happened months ago (it
+     * arcs out through the top of the frame as it ages). The discount
+     * fades off during the final zoom-out, which must frame everything.
+     */
+    private static final double Y_FIT_RECENT_DAYS = 45;
+    private static final double Y_FIT_AGE_DECAY_DAYS = 75;
     private static final float LABEL_EASE_RATE = 6f;
     private static final float LABEL_TEXT_SIZE = 38f;
     private static final float LABEL_MIN_GAP_PX = 46f;
@@ -315,25 +325,59 @@ public final class Cs2TopPlayersScene extends Scene {
     private void updateYFit(double dt) {
         double xLo = visibleXMin;
         double xHi = visibleXMin + visibleXSpan;
-        double min = Double.POSITIVE_INFINITY;
-        double max = Double.NEGATIVE_INFINITY;
+
+        // Pass 1: full-weight range over recent data (and line heads).
+        double recentMin = Double.POSITIVE_INFINITY;
+        double recentMax = Double.NEGATIVE_INFINITY;
+        double recentCutoff = tDay - Y_FIT_RECENT_DAYS;
+        for (Track track : tracks) {
+            double lo = Math.max(Math.max(track.firstDay, xLo), recentCutoff);
+            double hi = Math.min(Math.min(tDay, track.lastDay), xHi);
+            if (hi <= lo) {
+                continue;
+            }
+            for (double d = lo; d <= hi + 1e-9; d += Y_FIT_SAMPLE_DAYS) {
+                double v = track.spline.value(Math.min(d, hi));
+                recentMin = Math.min(recentMin, v);
+                recentMax = Math.max(recentMax, v);
+            }
+            double hiv = track.spline.value(hi);
+            recentMin = Math.min(recentMin, hiv);
+            recentMax = Math.max(recentMax, hiv);
+        }
+
+        // The age discount releases old extremes during the follow, but the
+        // final zoom-out must frame the whole history again.
+        double discountStrength = 1.0;
+        if (zoomOutStarted) {
+            discountStrength = 1.0 - smoothstep(clamp01(
+                    (zoomOutElapsed - FINAL_ZOOM_DELAY) / FINAL_ZOOM_DURATION));
+        }
+
+        // Pass 2: all visible data, with extremes older than the recent
+        // window decayed toward the recent range by age. Samples sit on an
+        // ABSOLUTE day grid plus exact endpoints: a grid anchored to the
+        // moving window edge shifts its sample set every frame, and the
+        // resulting min/max wobble made the chart jitter during the zoom-out.
+        boolean haveRecent = recentMin <= recentMax;
+        double min = haveRecent ? recentMin : Double.POSITIVE_INFINITY;
+        double max = haveRecent ? recentMax : Double.NEGATIVE_INFINITY;
         for (Track track : tracks) {
             double lo = Math.max(track.firstDay, xLo);
             double hi = Math.min(Math.min(tDay, track.lastDay), xHi);
             if (hi <= lo) {
                 continue;
             }
-            // Sample on an ABSOLUTE day grid plus the exact endpoints: a grid
-            // anchored to the moving window edge shifts its sample set every
-            // frame, and the resulting min/max wobble made the whole chart
-            // (and the labels chasing it) jitter during the final zoom-out.
-            double lov = track.spline.value(lo);
-            double hiv = track.spline.value(hi);
-            min = Math.min(min, Math.min(lov, hiv));
-            max = Math.max(max, Math.max(lov, hiv));
+            for (double endpoint : new double[]{lo, hi}) {
+                double v = ageDiscounted(track.spline.value(endpoint), tDay - endpoint,
+                        recentMin, recentMax, haveRecent ? discountStrength : 0.0);
+                min = Math.min(min, v);
+                max = Math.max(max, v);
+            }
             double first = Math.ceil(lo / Y_FIT_SAMPLE_DAYS) * Y_FIT_SAMPLE_DAYS;
             for (double d = first; d <= hi + 1e-9; d += Y_FIT_SAMPLE_DAYS) {
-                double v = track.spline.value(d);
+                double v = ageDiscounted(track.spline.value(d), tDay - d,
+                        recentMin, recentMax, haveRecent ? discountStrength : 0.0);
                 min = Math.min(min, v);
                 max = Math.max(max, v);
             }
@@ -371,11 +415,14 @@ public final class Cs2TopPlayersScene extends Scene {
         double xLo = grid.getXMin();
         double xHi = grid.getXMax();
         double stepDays = Math.max(0.4, (xHi - xLo) / Math.max(1f, grid.getPlotWidth()) * 2.0);
-        float plotTop = grid.getPlotTop();
-        // Soft floor: lines may dip a little below the plot (and below the
-        // rating-1.0 ground axis when the window is grounded) instead of
+        // Lines may exit through the TOP of the frame (an age-discounted
+        // historical spike arcs out as the camera re-frames the present) —
+        // clamp far above the viewport, not at the plot edge, or the spike
+        // flattens into a plateau. Soft floor below: lines may dip a little
+        // past the plot (and below the grounded 1.0 axis) instead of
         // visibly flattening against the boundary.
-        float plotBottom = plotTop + grid.getPlotHeight() + 30f;
+        float plotTop = grid.getPlotTop() - 400f;
+        float plotBottom = grid.getPlotTop() + grid.getPlotHeight() + 30f;
 
         for (Track track : tracks) {
             double headDay = Math.min(tDay, track.lastDay);
@@ -931,6 +978,23 @@ public final class Cs2TopPlayersScene extends Scene {
             throw new IllegalArgumentException("msPerDay must be positive: " + raw);
         }
         return parsed;
+    }
+
+    /** Decay a sample's framing influence toward the recent range by age. */
+    private static double ageDiscounted(double value, double age,
+                                        double recentMin, double recentMax, double strength) {
+        if (strength <= 0 || age <= Y_FIT_RECENT_DAYS) {
+            return value;
+        }
+        double weight = 1.0 - strength
+                * (1.0 - Math.exp(-(age - Y_FIT_RECENT_DAYS) / Y_FIT_AGE_DECAY_DAYS));
+        if (value > recentMax) {
+            return recentMax + (value - recentMax) * weight;
+        }
+        if (value < recentMin) {
+            return recentMin + (value - recentMin) * weight;
+        }
+        return value;
     }
 
     // ------------------------------------------------------------------

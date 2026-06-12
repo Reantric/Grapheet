@@ -81,7 +81,7 @@ This file is the handoff context for future Codex sessions. Read it before start
 - `DataGrid` now extends the white axes with the same top/right overscan as the grid so the chart frame and extra line families stay visually aligned.
 - `DataGrid` now suppresses the lower-left corner labels at the axis intersection (e.g. `0` and `800` in the current test setup), and secondary adaptive label families render smaller, greyer, and more transparent than the dominant family.
 - `DataGrid` label generation now follows the same top/right overscan window as the grid and extends the left/bottom label bands accordingly, so top/right labels can appear beyond the plot instead of clipping at `xMax` / `yMax`.
-- `DataGrid` now renders adaptive anchored tick families on both axes using the `1, 2, 5, 10` scale ladder. Labels and gridlines fade according to screen-space spacing, so a base `100` y-step naturally transitions through `200`, `500`, `1000`, etc. when zooming out, and smaller sub-base steps fade in only when the base spacing becomes genuinely sparse.
+- `DataGrid` now renders adaptive anchored tick families on both axes using the ABSOLUTE decimal `1, 2, 5` ladder (..., 0.05, 0.1, 0.2, 0.5, 1, 2, 5, ...) anchored at the configured base step. The old base-relative ladder (base x 1, 2, 5, 10) produced steps like 0.25 from a 0.05 base — "1.25, 1.75" axis values where charting convention expects "1.20, 1.40" — and made 0.1 -> 0.2-equivalent hand-offs non-nested. Smaller sub-base steps fade in only when the base spacing becomes genuinely sparse.
 - `DataGrid` uses the same adaptive family logic for x-axis labels/gridlines, so future data-story zoom-outs can widen the x-domain without crushing labels.
 - `TestScene` currently uses a `100` y-axis base step, anchors the y-grid at `800` so the bottom axis sits on a major line, and relies on `DataGrid` adaptive tick families instead of fixed minor label spacing.
 - `TestScene` now also draws a bright sine curve directly in chart space, reveals it over time, and starts horizontally following the curve once its head reaches roughly `85%` of the visible x-window.
@@ -264,7 +264,16 @@ This file is the handoff context for future Codex sessions. Read it before start
 - Y-fit occupancy 0.65 with 0.18 top headroom (0.12 let the leader collide
   with the Current Date panel). drawSeries clamps lines/dots at plot
   bottom + 30px (soft floor): lines may dip below the grounded 1.0 axis
-  instead of flattening against it.
+  instead of flattening against it. The TOP clamp sits 400px above the
+  plot: age-discounted spikes exit through the top of the frame and must
+  not flatten into a plateau at the plot edge.
+- The y-fit is AGE-WEIGHTED: samples within Y_FIT_RECENT_DAYS (45) of
+  "now" get full framing weight; older extremes decay toward the recent
+  range (tau Y_FIT_AGE_DECAY_DAYS 75). Without this the camera held the
+  window open for a months-old spike until it scrolled off the left edge
+  (~31s of video). The discount fades off in sync with the final zoom-out,
+  which must frame the full history again (stress-tested with a synthetic
+  2.5-peak/0.8-trough player).
 - Numeric label ideal spacing is 175px (of 1920): smaller ideals let the
   0.05 y band hold on to ~92-107px spacing, which read as overcrowded
   before the hand-off fired.

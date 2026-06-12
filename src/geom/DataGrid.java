@@ -1097,10 +1097,42 @@ public final class DataGrid {
         return Math.max(minRailWidth, maxLabelWidth + yLabelInset + SLIM_RAIL_PADDING);
     }
 
+    /**
+     * Tick families come from the ABSOLUTE decimal 1-2-5 ladder
+     * (..., 0.05, 0.1, 0.2, 0.5, 1, 2, 5, ...), anchored at the configured
+     * base step (index 0). Anchoring multipliers at the base instead
+     * (base x 1, 2, 5, 10) produced base-relative steps like 0.25 from a
+     * 0.05 base — "1.25, 1.75" axis values where every charting convention
+     * (and the data's own idiom) expects "1.20, 1.40". Bonus: 0.1 -> 0.2 is
+     * a nested hand-off (seamless), unlike the old 0.1 -> 0.25 crossfade.
+     * A base step that is not itself on the ladder is inserted as index 0.
+     */
     private double niceStep(double baseStep, int index) {
-        int power = Math.floorDiv(index, NICE_STEP_MULTIPLIERS.length);
-        int multiplierIndex = Math.floorMod(index, NICE_STEP_MULTIPLIERS.length);
-        return baseStep * NICE_STEP_MULTIPLIERS[multiplierIndex] * Math.pow(10, power);
+        if (index == 0) {
+            return baseStep;
+        }
+        int baseRung = ladderFloorRung(baseStep);
+        boolean baseOnLadder = Math.abs(ladderValue(baseRung) - baseStep) <= baseStep * 1e-9;
+        int rung = baseRung + index + (!baseOnLadder && index < 0 ? 1 : 0);
+        return ladderValue(rung);
+    }
+
+    private double ladderValue(int rung) {
+        int power = Math.floorDiv(rung, NICE_STEP_MULTIPLIERS.length);
+        int multiplierIndex = Math.floorMod(rung, NICE_STEP_MULTIPLIERS.length);
+        return NICE_STEP_MULTIPLIERS[multiplierIndex] * Math.pow(10, power);
+    }
+
+    /** Largest ladder rung whose value is <= the given value. */
+    private int ladderFloorRung(double value) {
+        int rung = (int) Math.floor(Math.log10(value)) * NICE_STEP_MULTIPLIERS.length;
+        while (ladderValue(rung + 1) <= value * (1.0 + EPSILON)) {
+            rung++;
+        }
+        while (ladderValue(rung) > value * (1.0 + EPSILON)) {
+            rung--;
+        }
+        return rung;
     }
 
     private int niceStepFloorIndex(double baseStep, double targetStep) {
