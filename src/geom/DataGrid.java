@@ -10,8 +10,10 @@ import java.time.LocalDate;
 import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 import java.util.function.DoubleFunction;
@@ -42,34 +44,83 @@ public final class DataGrid {
 
     private static final float ALPHA_EPSILON = 0.02f;
     private static final float BOTTOM_AXIS_FALL_FADE_PX = 36f;
+    private static final float Y_AXIS_EXIT_FADE_PX = 48f;
+    /** Sparse-side fade reach shared by every bump curve (see bumpAlpha). */
+    private static final float SPARSE_SUPPORT_LOG2 = 2.2f;
+
+    // Label crossfades are TIME-based and exactly ONE family per axis is
+    // the live "label band": the position-derived bump alphas only elect
+    // the band (the incumbent keeps it unless a challenger clearly beats
+    // it), and each family's rendered alpha eases toward in-band/not at a
+    // fixed rate. Driving rendered alphas straight off pixel spacing left
+    // labels stuck at mid-grey for tens of seconds when the camera crawled
+    // through a crossfade, and any rule that allowed two strong NON-NESTED
+    // families at once (5-year vs 2-year ticks) overprinted label text.
+    private static final float LABEL_FADE_IN_RATE = 4.5f;
+    /** X fade-out stays fast: during a zoom the dying calendar labels keep
+     *  compressing toward their neighbours, so the ghost-overlap window
+     *  must be short. The y axis has no such pressure and reads better
+     *  with a gentler exit. */
+    private static final float X_LABEL_FADE_OUT_RATE = 7f;
+    private static final float Y_LABEL_FADE_OUT_RATE = 4.2f;
+    private static final float LABEL_BAND_STICKINESS = 0.12f;
+    /** Below this raw alpha the incumbent's labels are getting physically
+     *  cramped — it loses its stickiness and even concedes a small bias to
+     *  the challenger, so the hand-off fires BEFORE full-brightness labels
+     *  compress into each other during a fast zoom-out. */
+    private static final float LABEL_BAND_CRAMP_FLOOR = 0.5f;
+    /** Shared left-edge exit window for x gridlines AND their labels (a
+     *  fraction of the base gap), so both leave together and the leftmost
+     *  date does not hang around half-faded for seconds. */
+    private static final float X_LABEL_EXIT_FADE_FRACTION = 0.45f;
+    /** Horizontal gridlines and y labels overshoot the plot bottom by this
+     *  much and dissolve, instead of popping out at the boundary. */
+    private static final float BOTTOM_GRID_OVERSCAN_PX = 30f;
 
     // Numeric-axis bump curves (log2 distance from the ideal spacing).
-    private static final float GRID_IDEAL_SPACING_PX = 84f;
-    private static final float GRID_PLATEAU_LOG2 = 0.75f;
-    private static final float GRID_SUPPORT_LOG2 = 1.55f;
-    private static final float LABEL_IDEAL_SPACING_PX = 112f;
+    // All *_SPACING_PX / *_RAMP_*_PX constants are tuned for a 1920px-wide
+    // canvas and are scaled by densityScale() at use, so a 1280px rough cut
+    // and a 3840px final pick the same tick families as the 1920px design.
+    private static final float REFERENCE_CANVAS_WIDTH = 1920f;
+    private static final float LABEL_IDEAL_SPACING_PX = 150f;
     private static final float LABEL_PLATEAU_LOG2 = 0.5f;
-    private static final float LABEL_SUPPORT_LOG2 = 1.1f;
+    private static final float LABEL_SUPPORT_LOG2 = 0.95f;
 
-    // Calendar-axis bump curves. Labels stay sparse (full "Dec 1, 2013"-style
-    // text needs room, so quarters dominate a ~1-year window and years take
-    // over after a zoom-out). The grid keeps a single dominant rhythm with
-    // soft month minors under the quarter majors — the pre-rework feel.
-    private static final float DATE_GRID_IDEAL_SPACING_PX = 340f;
-    private static final float DATE_GRID_PLATEAU_LOG2 = 0.5f;
-    private static final float DATE_GRID_SUPPORT_LOG2 = 1.85f;
+    // Calendar-axis label bump curve. Labels stay sparse (full
+    // "Dec 1, 2013"-style text needs room, so quarters dominate a ~1-year
+    // window and years take over after a zoom-out).
     private static final float DATE_LABEL_IDEAL_SPACING_PX = 430f;
     private static final float DATE_LABEL_PLATEAU_LOG2 = 0.6f;
     private static final float DATE_LABEL_SUPPORT_LOG2 = 1.5f;
+
+    // GRIDLINES follow the label band: the band family's lines are the
+    // majors, the family ONE step finer shows as soft minors gated by the
+    // room the band's spacing leaves (SUB_BASE_GRID ramp), and every other
+    // family fades out — lines whose labels died must die with them.
+    private static final float MINOR_GRID_STRENGTH = 0.55f;
 
     // Steps finer than the configured base step only fade in once the base
     // family itself has become sparse (px spacing of the base family) —
     // matching the pre-rework branch, where sub-base lines stayed hidden at
     // ordinary zoom and the grid kept one clean dominant rhythm.
-    private static final float SUB_BASE_GRID_RAMP_START_PX = 110f;
-    private static final float SUB_BASE_GRID_RAMP_END_PX = 190f;
-    private static final float SUB_BASE_LABEL_RAMP_START_PX = 130f;
-    private static final float SUB_BASE_LABEL_RAMP_END_PX = 230f;
+    // A sub-base family fades in only while its PARENT family (one ladder
+    // step coarser) is sparse: gates accumulate multiplicatively with depth,
+    // so one family of soft minors appears at a time. (A single gate keyed
+    // on the base family's spacing once admitted EVERY finer family at a
+    // tight window — 0.025 AND 0.01 under a 0.05 base — reading as a mesh
+    // of gridlines at the race scene's opening frame.)
+    private static final float SUB_BASE_GRID_RAMP_START_PX = 150f;
+    private static final float SUB_BASE_GRID_RAMP_END_PX = 300f;
+    // Sub-base LABELS need sparser parent spacing than gridlines before
+    // they help. With the time-based crossfade the raw gate value must
+    // exceed LABEL_FADE_ON_THRESHOLD before finer labels actually switch
+    // on, so the effective trigger sits well above the ramp start — at the
+    // race scene's tightest y-window (base gap ~250px of 1920) finer labels
+    // stay off, while genuinely sparse spacing pulls them in. Scenes whose
+    // formatter would round sub-base values badly should use an adaptive
+    // precision formatter.
+    private static final float SUB_BASE_LABEL_RAMP_START_PX = 210f;
+    private static final float SUB_BASE_LABEL_RAMP_END_PX = 320f;
 
     private final Applet p;
     private final DecimalFormat numberFormat = new DecimalFormat("0.##");
@@ -123,6 +174,23 @@ public final class DataGrid {
     private boolean railCollapseRatchet;
     private float reachedCollapseProgress;
 
+    /** Per-family label fade state: key -> {displayed alpha, target}. */
+    private final Map<Object, float[]> xLabelFadeStates = new HashMap<>();
+    private final Map<Object, float[]> yLabelFadeStates = new HashMap<>();
+    /** Per-family gridline fade state, driven by the same band election. */
+    private final Map<Object, float[]> xGridFadeStates = new HashMap<>();
+    private final Map<Object, float[]> yGridFadeStates = new HashMap<>();
+    private Object xLabelBandKey;
+    private Object yLabelBandKey;
+    /** Old band held at full alpha during a nested refinement (see
+     *  applyBandTransition) until the finer band has fully faded in. */
+    private Object xLingeringBandKey;
+    private Object yLingeringBandKey;
+    private float labelFadeDt = 1f / 60f;
+
+    /** Tick-subset relation between the outgoing and incoming band. */
+    private enum Nesting { NEW_WITHIN_OLD, OLD_WITHIN_NEW, NONE }
+
     public DataGrid(Applet window) {
         this.p = window;
     }
@@ -138,7 +206,7 @@ public final class DataGrid {
         }
 
         List<Tick> yTicks = buildNumericTicks(yMin, yMax, yAnchor, yMajorStep, plotHeight,
-                topGridOverscan, yLabelFormatter);
+                topGridOverscan, yLabelFormatter, yLabelFadeStates, yGridFadeStates);
 
         currentCollapseProgress = railCollapseProgress();
         float currentLeftRailWidth = interpolate(leftInset, slimRailWidth(yTicks), currentCollapseProgress);
@@ -151,14 +219,20 @@ public final class DataGrid {
         List<Tick> xTicks = xCalendarDayZero != null
                 ? buildCalendarTicks()
                 : buildNumericTicks(xMin, xMax, xAnchor, xMajorStep, plotWidth,
-                        rightGridOverscan, xLabelFormatter);
+                        rightGridOverscan, xLabelFormatter, xLabelFadeStates, xGridFadeStates);
 
         drawVerticalGrid(xTicks);
         drawHorizontalGrid(yTicks);
+        // The bottom band sits under the axes, but the left rail band draws
+        // OVER them: it is the cover mask that hides the world-space y-axis
+        // line as the axis exits into the rail.
         if (showAxisBackgroundStrips) {
-            drawLabelBands();
+            drawBottomLabelBand();
         }
         drawAxes();
+        if (showAxisBackgroundStrips) {
+            drawLeftLabelBand();
+        }
         if (showLabels) {
             ensureFont();
             p.textFont(font);
@@ -236,6 +310,15 @@ public final class DataGrid {
     /** Overrides the default (Computer Modern) axis label font. */
     public void setLabelFont(PFont labelFont) {
         this.font = Objects.requireNonNull(labelFont, "labelFont");
+    }
+
+    /**
+     * Animation time step for the label crossfades, in seconds. Scenes on a
+     * fixed-timestep clock should pass their dt every frame so fades stay
+     * tied to the video timeline; without it a 60fps wall clock is assumed.
+     */
+    public void setLabelFadeTimeStep(double dt) {
+        this.labelFadeDt = (float) Math.max(0.0, dt);
     }
 
     public void setPlotInsets(float leftInset, float topInset, float rightInset, float bottomInset) {
@@ -325,50 +408,97 @@ public final class DataGrid {
             double baseStep,
             float pixelSpan,
             float overscanPx,
-            DoubleFunction<String> formatter
+            DoubleFunction<String> formatter,
+            Map<Object, float[]> labelFadeStates,
+            Map<Object, float[]> gridFadeStates
     ) {
         double span = max - min;
         if (baseStep <= EPSILON || span <= EPSILON || pixelSpan <= 0f) {
             return new ArrayList<>();
         }
 
-        List<double[]> families = new ArrayList<>(); // {step, gridAlpha, labelAlpha}
         int firstIndex = niceStepFloorIndex(baseStep, span * 8.0 / pixelSpan) - 1;
         int lastIndex = niceStepFloorIndex(baseStep, span * 1500.0 / pixelSpan) + 2;
 
-        float baseSpacingPx = (float) (pixelSpan * (baseStep / span));
-        float subBaseGrid = smoothstep(clamp01((baseSpacingPx - SUB_BASE_GRID_RAMP_START_PX)
-                / (SUB_BASE_GRID_RAMP_END_PX - SUB_BASE_GRID_RAMP_START_PX)));
-        float subBaseLabel = smoothstep(clamp01((baseSpacingPx - SUB_BASE_LABEL_RAMP_START_PX)
-                / (SUB_BASE_LABEL_RAMP_END_PX - SUB_BASE_LABEL_RAMP_START_PX)));
+        float scale = densityScale();
+        // Per-depth label gates: gate(index) = product over j in (index, 0]
+        // of ramp(parent spacing of family j) — each finer family needs
+        // every ancestor down from the base to have gone sparse first.
+        int subDepth = Math.max(0, -firstIndex);
+        float[] subLabelGate = new float[subDepth];
+        float labelGateAcc = 1f;
+        for (int index = -1; index >= firstIndex; index--) {
+            float parentSpacingPx = (float) (pixelSpan * (niceStep(baseStep, index + 1) / span));
+            labelGateAcc *= subBaseRamp(parentSpacingPx,
+                    SUB_BASE_LABEL_RAMP_START_PX * scale, SUB_BASE_LABEL_RAMP_END_PX * scale);
+            subLabelGate[-1 - index] = labelGateAcc;
+        }
 
-        int bestLabelIndex = Integer.MIN_VALUE;
-        float bestLabelAlpha = 0f;
-        for (int index = firstIndex; index <= lastIndex; index++) {
+        int count = lastIndex - firstIndex + 1;
+        double[] steps = new double[count];
+        float[] rawLabelAlphas = new float[count];
+        Object[] fadeKeys = new Object[count];
+        for (int i = 0; i < count; i++) {
+            int index = firstIndex + i;
+            fadeKeys[i] = index;
             double step = niceStep(baseStep, index);
+            steps[i] = step;
             if (step <= EPSILON) {
                 continue;
             }
             float spacingPx = (float) (pixelSpan * (step / span));
-            float gridAlpha = bumpAlpha(spacingPx, GRID_IDEAL_SPACING_PX, GRID_PLATEAU_LOG2, GRID_SUPPORT_LOG2);
-            float labelAlpha = bumpAlpha(spacingPx, LABEL_IDEAL_SPACING_PX, LABEL_PLATEAU_LOG2, LABEL_SUPPORT_LOG2);
+            float labelAlpha = bumpAlpha(spacingPx, LABEL_IDEAL_SPACING_PX * scale,
+                    LABEL_PLATEAU_LOG2, LABEL_SUPPORT_LOG2);
             if (index < 0) {
-                gridAlpha *= subBaseGrid;
-                labelAlpha *= subBaseLabel;
+                labelAlpha *= subLabelGate[-1 - index];
             }
-            if (labelAlpha > bestLabelAlpha) {
-                bestLabelAlpha = labelAlpha;
-                bestLabelIndex = index;
-            }
-            if (Math.max(gridAlpha, labelAlpha) > ALPHA_EPSILON) {
-                families.add(new double[]{step, gridAlpha, labelAlpha});
-            }
+            rawLabelAlphas[i] = labelAlpha;
         }
 
-        // Never leave an axis unlabeled: if everything faded out (possible at
-        // extreme zoom-in with sub-base suppression), force the best family.
-        if (bestLabelAlpha <= ALPHA_EPSILON && bestLabelIndex != Integer.MIN_VALUE) {
-            families.add(new double[]{niceStep(baseStep, bestLabelIndex), 1.0, 1.0});
+        boolean isYAxis = labelFadeStates == yLabelFadeStates;
+        Object previousBand = isYAxis ? yLabelBandKey : xLabelBandKey;
+        Object lingering = isYAxis ? yLingeringBandKey : xLingeringBandKey;
+        Object band = selectLabelBand(previousBand, fadeKeys, rawLabelAlphas);
+        if (previousBand != null && !band.equals(previousBand)) {
+            Nesting nesting = previousBand instanceof Integer oldIndex && band instanceof Integer newIndex
+                    ? numericNesting(baseStep, oldIndex, newIndex)
+                    : Nesting.NONE;
+            lingering = applyBandTransition(
+                    labelFadeStates, gridFadeStates, previousBand, band, lingering, nesting);
+        }
+
+        // Gridlines follow the band: band lines are the majors, the family
+        // one step finer fades in as soft minors when the band's spacing
+        // leaves room, everything else dies with its labels.
+        int bandIndex = (Integer) band;
+        float bandSpacingPx = (float) (pixelSpan * (niceStep(baseStep, bandIndex) / span));
+        float minorTarget = MINOR_GRID_STRENGTH * subBaseRamp(bandSpacingPx,
+                SUB_BASE_GRID_RAMP_START_PX * scale, SUB_BASE_GRID_RAMP_END_PX * scale);
+
+        float outRate = isYAxis ? Y_LABEL_FADE_OUT_RATE : X_LABEL_FADE_OUT_RATE;
+        float[] labelAlphas = new float[count];
+        float[] gridAlphas = new float[count];
+        for (int i = 0; i < count; i++) {
+            int index = firstIndex + i;
+            boolean on = fadeKeys[i].equals(band) || fadeKeys[i].equals(lingering);
+            labelAlphas[i] = fadedAlpha(labelFadeStates, fadeKeys[i], on ? 1f : 0f, outRate);
+            float gridTarget = on ? 1f : (index == bandIndex - 1 ? minorTarget : 0f);
+            gridAlphas[i] = fadedAlpha(gridFadeStates, fadeKeys[i], gridTarget, outRate);
+        }
+        lingering = releaseLingerWhenCovered(labelFadeStates, gridFadeStates, band, lingering);
+        if (isYAxis) {
+            yLabelBandKey = band;
+            yLingeringBandKey = lingering;
+        } else {
+            xLabelBandKey = band;
+            xLingeringBandKey = lingering;
+        }
+
+        List<double[]> families = new ArrayList<>(); // {step, gridAlpha, labelAlpha}
+        for (int i = 0; i < count; i++) {
+            if (steps[i] > EPSILON && Math.max(gridAlphas[i], labelAlphas[i]) > ALPHA_EPSILON) {
+                families.add(new double[]{steps[i], gridAlphas[i], labelAlphas[i]});
+            }
         }
         if (families.isEmpty()) {
             return new ArrayList<>();
@@ -416,13 +546,69 @@ public final class DataGrid {
         double low = Math.min(xMin, xAnchor);
         double high = xMax + span * (rightGridOverscan / plotWidth);
 
-        TreeMap<Long, Tick> merged = new TreeMap<>();
-        for (CalendarFamily family : CalendarFamily.values()) {
-            float spacingPx = (float) (plotWidth * (family.averageDays / span));
-            float gridAlpha = bumpAlpha(spacingPx, DATE_GRID_IDEAL_SPACING_PX,
-                    DATE_GRID_PLATEAU_LOG2, DATE_GRID_SUPPORT_LOG2);
-            float labelAlpha = bumpAlpha(spacingPx, DATE_LABEL_IDEAL_SPACING_PX,
+        float scale = densityScale();
+        // Physical collision guard: the bump curve alone happily keeps a
+        // family at full alpha while its ~160px label texts compress to
+        // zero gap during the final zoom-out. Measure the real text width
+        // and kill a family's label alpha as its spacing reaches it, which
+        // also trips the election's cramp floor right at first contact.
+        ensureFont();
+        p.textFont(font);
+        p.textSize(majorLabelSize);
+        // textWidth() returns the advance width; the visible ink is ~10%
+        // narrower (side bearings). Using the raw advance dented the final
+        // two-year band (183px spacing vs ~185px advance) enough to flip
+        // the election to sparse five-year labels even though the rendered
+        // texts had clear gaps.
+        float labelInkPx = 0.9f * p.textWidth("Jan 1, 2028");
+        CalendarFamily[] families = CalendarFamily.values();
+        float[] rawLabelAlphas = new float[families.length];
+        for (int i = 0; i < families.length; i++) {
+            float spacingPx = (float) (plotWidth * (families[i].averageDays / span));
+            float cramp = smoothstep(clamp01((spacingPx - labelInkPx) / (14f * scale)));
+            rawLabelAlphas[i] = cramp * bumpAlpha(spacingPx, DATE_LABEL_IDEAL_SPACING_PX * scale,
                     DATE_LABEL_PLATEAU_LOG2, DATE_LABEL_SUPPORT_LOG2);
+        }
+        Object previousBand = xLabelBandKey;
+        Object band = selectLabelBand(previousBand, families, rawLabelAlphas);
+        if (previousBand != null && !band.equals(previousBand)) {
+            Nesting nesting = previousBand instanceof CalendarFamily oldFamily
+                    && band instanceof CalendarFamily newFamily
+                    ? calendarNesting(oldFamily, newFamily)
+                    : Nesting.NONE;
+            xLingeringBandKey = applyBandTransition(xLabelFadeStates, xGridFadeStates,
+                    previousBand, band, xLingeringBandKey, nesting);
+        }
+        xLabelBandKey = band;
+
+        // Gridlines follow the band (majors = band, soft minors = the next
+        // finer family while the band's spacing leaves room, rest fade out).
+        CalendarFamily bandFamily = (CalendarFamily) band;
+        float bandSpacingPx = (float) (plotWidth * (bandFamily.averageDays / span));
+        float minorTarget = MINOR_GRID_STRENGTH * subBaseRamp(bandSpacingPx,
+                SUB_BASE_GRID_RAMP_START_PX * scale, SUB_BASE_GRID_RAMP_END_PX * scale);
+        CalendarFamily minorFamily = bandFamily.ordinal() > 0
+                ? families[bandFamily.ordinal() - 1]
+                : null;
+
+        float[] labelAlphas = new float[families.length];
+        float[] gridAlphas = new float[families.length];
+        for (int i = 0; i < families.length; i++) {
+            boolean on = families[i].equals(band) || families[i].equals(xLingeringBandKey);
+            labelAlphas[i] = fadedAlpha(xLabelFadeStates, families[i], on ? 1f : 0f,
+                    X_LABEL_FADE_OUT_RATE);
+            float gridTarget = on ? 1f : (families[i] == minorFamily ? minorTarget : 0f);
+            gridAlphas[i] = fadedAlpha(xGridFadeStates, families[i], gridTarget,
+                    X_LABEL_FADE_OUT_RATE);
+        }
+        xLingeringBandKey = releaseLingerWhenCovered(
+                xLabelFadeStates, xGridFadeStates, band, xLingeringBandKey);
+
+        TreeMap<Long, Tick> merged = new TreeMap<>();
+        for (int i = 0; i < families.length; i++) {
+            CalendarFamily family = families[i];
+            float gridAlpha = gridAlphas[i];
+            float labelAlpha = labelAlphas[i];
             if (Math.max(gridAlpha, labelAlpha) <= ALPHA_EPSILON) {
                 continue;
             }
@@ -447,6 +633,146 @@ public final class DataGrid {
         return new ArrayList<>(merged.values());
     }
 
+    /**
+     * Elect the single live label-band family for an axis: the candidate
+     * with the strongest raw bump alpha, except a sitting incumbent keeps
+     * the band unless the challenger clearly beats it (stickiness). One
+     * band at a time is what prevents two strong NON-NESTED families
+     * (5-year vs 2-year ticks, 500 vs 200) from overprinting label text;
+     * nested transitions share tick positions and crossfade invisibly.
+     */
+    private Object selectLabelBand(Object incumbentKey, Object[] keys, float[] rawAlphas) {
+        int best = 0;
+        int incumbent = -1;
+        for (int i = 0; i < keys.length; i++) {
+            if (rawAlphas[i] > rawAlphas[best]) {
+                best = i;
+            }
+            if (keys[i].equals(incumbentKey)) {
+                incumbent = i;
+            }
+        }
+        if (incumbent >= 0) {
+            float bias = rawAlphas[incumbent] >= LABEL_BAND_CRAMP_FLOOR
+                    ? LABEL_BAND_STICKINESS
+                    : -0.05f;
+            if (rawAlphas[incumbent] + bias >= rawAlphas[best]) {
+                return keys[incumbent];
+            }
+        }
+        return keys[best];
+    }
+
+    /**
+     * Make nested band hand-offs seamless: ticks shared by the outgoing and
+     * incoming band must never blink. Coarsening (new band's ticks are a
+     * subset of the old's — 1 to 2, 5 to 10, quarter to year): the incoming
+     * band snaps to the outgoing band's current alpha, so its ticks simply
+     * continue while the old band's extra ticks fade out. Refinement (old
+     * within new): the old band LINGERS at full until the finer band has
+     * fully faded in, then drops invisibly. Non-nested switches (2 to 5,
+     * two-year to five-year) get the ordinary simultaneous crossfade —
+     * there is no shared structure to preserve. Returns the lingering key.
+     */
+    private Object applyBandTransition(Map<Object, float[]> labelStates,
+                                       Map<Object, float[]> gridStates, Object previousBand,
+                                       Object band, Object lingering, Nesting nesting) {
+        if (lingering != null && !lingering.equals(band)) {
+            snapLabelState(labelStates, lingering, 0f);
+            snapLabelState(gridStates, lingering, 0f);
+        }
+        if (nesting == Nesting.NEW_WITHIN_OLD) {
+            snapLabelState(labelStates, band, currentLabelAlpha(labelStates, previousBand));
+            snapLabelState(gridStates, band, currentLabelAlpha(gridStates, previousBand));
+            return null;
+        }
+        if (nesting == Nesting.OLD_WITHIN_NEW) {
+            return previousBand;
+        }
+        return null;
+    }
+
+    private Object releaseLingerWhenCovered(Map<Object, float[]> labelStates,
+                                            Map<Object, float[]> gridStates,
+                                            Object band, Object lingering) {
+        if (lingering != null && currentLabelAlpha(labelStates, band) >= 1f - ALPHA_EPSILON) {
+            snapLabelState(labelStates, lingering, 0f);
+            snapLabelState(gridStates, lingering, 0f);
+            return null;
+        }
+        return lingering;
+    }
+
+    private void snapLabelState(Map<Object, float[]> states, Object key, float alpha) {
+        float[] state = states.get(key);
+        if (state == null) {
+            states.put(key, new float[]{alpha, alpha});
+        } else {
+            state[0] = alpha;
+            state[1] = alpha;
+        }
+    }
+
+    private float currentLabelAlpha(Map<Object, float[]> states, Object key) {
+        float[] state = states.get(key);
+        return state == null ? 0f : state[0];
+    }
+
+    private Nesting numericNesting(double baseStep, int oldIndex, int newIndex) {
+        double oldStep = niceStep(baseStep, oldIndex);
+        double newStep = niceStep(baseStep, newIndex);
+        if (isIntegerMultiple(newStep, oldStep)) {
+            return Nesting.NEW_WITHIN_OLD;
+        }
+        if (isIntegerMultiple(oldStep, newStep)) {
+            return Nesting.OLD_WITHIN_NEW;
+        }
+        return Nesting.NONE;
+    }
+
+    /** Every calendar family pair nests except two-year vs five-year. */
+    private Nesting calendarNesting(CalendarFamily oldFamily, CalendarFamily newFamily) {
+        boolean newCoarser = newFamily.averageDays > oldFamily.averageDays;
+        CalendarFamily coarse = newCoarser ? newFamily : oldFamily;
+        CalendarFamily fine = newCoarser ? oldFamily : newFamily;
+        if (coarse == CalendarFamily.FIVE_YEARS && fine == CalendarFamily.TWO_YEARS) {
+            return Nesting.NONE;
+        }
+        return newCoarser ? Nesting.NEW_WITHIN_OLD : Nesting.OLD_WITHIN_NEW;
+    }
+
+    private boolean isIntegerMultiple(double larger, double smaller) {
+        if (larger <= smaller || smaller <= EPSILON) {
+            return false;
+        }
+        double ratio = larger / smaller;
+        return Math.abs(ratio - Math.round(ratio)) < 1e-6;
+    }
+
+    /**
+     * Time-based label crossfade: the rendered alpha eases toward the
+     * binary in-band target at a fixed rate — so a fade, once started,
+     * completes in well under a second even when the camera crawls through
+     * a crossfade boundary. (Driving rendered alpha straight off pixel
+     * spacing left labels stuck at mid-grey for tens of seconds.)
+     */
+    private float fadedAlpha(Map<Object, float[]> states, Object key, float target, float outRate) {
+        float[] state = states.get(key);
+        if (state == null) {
+            state = new float[]{target, target};
+            states.put(key, state);
+        }
+        state[1] = target;
+        float rate = target >= state[0] ? LABEL_FADE_IN_RATE : outRate;
+        state[0] += (state[1] - state[0]) * (1f - (float) Math.exp(-rate * labelFadeDt));
+        // Snap the exponential tails so faded-out families actually drop out
+        // of the tick list and fully-faded-in ones reach exact full style.
+        if (Math.abs(state[0] - state[1]) < ALPHA_EPSILON) {
+            state[0] = state[1];
+        }
+        return state[0];
+    }
+
     // Full reference-style date labels: "Dec 1, 2013", "Mar 1, 2014", ...
     private static String calendarLabel(LocalDate date) {
         String month = date.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
@@ -456,20 +782,26 @@ public final class DataGrid {
     /**
      * Continuous fade curve: full alpha while the family's pixel spacing is
      * within {@code plateauLog2} octaves of the ideal spacing, easing to zero
-     * at {@code supportLog2} octaves (both toward cramped and toward sparse).
+     * at {@code supportLog2} octaves on the cramped side. The sparse side
+     * decays much more slowly ({@code SPARSE_SUPPORT_LOG2} octaves): sparse
+     * ticks are clean, cramped ticks are the actual problem — and the base
+     * family of an axis has no coarser stand-in, so dimming it for mere
+     * sparseness left the whole rail grey at tight windows.
      */
     private float bumpAlpha(float spacingPx, float idealPx, float plateauLog2, float supportLog2) {
         if (spacingPx <= 0f) {
             return 0f;
         }
-        float u = Math.abs((float) (Math.log(spacingPx / idealPx) / Math.log(2)));
+        float signed = (float) (Math.log(spacingPx / idealPx) / Math.log(2));
+        float u = Math.abs(signed);
+        float support = signed > 0f ? SPARSE_SUPPORT_LOG2 : supportLog2;
         if (u <= plateauLog2) {
             return 1f;
         }
-        if (u >= supportLog2) {
+        if (u >= support) {
             return 0f;
         }
-        return 1f - smoothstep((u - plateauLog2) / (supportLog2 - plateauLog2));
+        return 1f - smoothstep((u - plateauLog2) / (support - plateauLog2));
     }
 
     // ------------------------------------------------------------------
@@ -478,7 +810,21 @@ public final class DataGrid {
 
     private void drawVerticalGrid(List<Tick> ticks) {
         float plotRight = plotLeft + plotWidth;
-        float fadeWidthPx = xBaseGapWidthPx();
+        // Same exit window as the x labels, so a line and its label leave
+        // together instead of the line dimming first.
+        float fadeWidthPx = xBaseGapWidthPx() * X_LABEL_EXIT_FADE_FRACTION;
+        // While the world y-axis line is visible, gridlines beside it are
+        // suppressed — a tick a couple of days from the anchor (Jan 1 next
+        // to a Dec 30 day-zero) otherwise peeks out as a grey sliver along
+        // the axis edge. The clearance is DOMAIN-based (a fraction of the
+        // major step) so it scales with canvas width and zoom: a fixed
+        // pixel radius covered the 720p offset but not the same tick at
+        // 1080p.
+        float axisX = domainToCanvasX(xAnchor);
+        boolean axisVisible = !(railCollapseRatchet && currentCollapseProgress >= 1f)
+                && yAxisFadeFactor(axisX, xBaseGapWidthPx()) > 0f;
+        float axisClearancePx = axisStroke + 2f;
+        double axisClearanceDomain = 0.06 * xMajorStep;
         p.noFill();
 
         for (Tick tick : ticks) {
@@ -496,6 +842,10 @@ public final class DataGrid {
             if (x < plotLeft - 1f) {
                 continue;
             }
+            if (axisVisible && (Math.abs(x - axisX) < axisClearancePx
+                    || Math.abs(tick.value - xAnchor) < axisClearanceDomain)) {
+                continue;
+            }
             float fade = leftVerticalFadeFactor(x, fadeWidthPx);
             if (fade <= 0f) {
                 continue;
@@ -507,6 +857,7 @@ public final class DataGrid {
 
     private void drawHorizontalGrid(List<Tick> ticks) {
         float plotRight = plotLeft + plotWidth;
+        float plotBottom = plotTop + plotHeight;
         p.noFill();
 
         for (Tick tick : ticks) {
@@ -521,10 +872,18 @@ public final class DataGrid {
             if (y < plotTop - topGridOverscan - 1f) {
                 break;
             }
-            if (y > plotTop + plotHeight + 1f) {
+            // Lines slide a little past the bottom edge and dissolve under
+            // the label band instead of popping out exactly at the boundary.
+            if (y > plotBottom + BOTTOM_GRID_OVERSCAN_PX) {
                 continue;
             }
-            applyGridStroke(t, 1f);
+            float bottomFade = y <= plotBottom
+                    ? 1f
+                    : 1f - smoothstep((y - plotBottom) / BOTTOM_GRID_OVERSCAN_PX);
+            if (bottomFade <= ALPHA_EPSILON) {
+                continue;
+            }
+            applyGridStroke(t, bottomFade);
             p.line(plotLeft, y, plotRight + rightGridOverscan, y);
         }
     }
@@ -568,21 +927,23 @@ public final class DataGrid {
         p.line(plotLeft, y, plotRight + rightGridOverscan, y);
     }
 
-    private void drawLabelBands() {
+    private void drawBottomLabelBand() {
         float plotRight = plotLeft + plotWidth;
         float plotBottom = plotTop + plotHeight;
-        float leftBandLeft = viewportLeft;
-        float leftBandRight = plotLeft - LABEL_BAND_GAP;
-        float bottomBandTop = plotBottom + LABEL_BAND_GAP;
-        float bottomBandBottom = p.height / 2f;
-
         p.noStroke();
         p.fill(labelBackgroundColor);
-        p.rect(leftBandLeft, plotTop - topGridOverscan, leftBandRight, plotBottom);
-        p.rect(plotLeft, bottomBandTop, plotRight + rightGridOverscan, bottomBandBottom);
+        p.rect(plotLeft, plotBottom + LABEL_BAND_GAP, plotRight + rightGridOverscan, p.height / 2f);
+    }
+
+    private void drawLeftLabelBand() {
+        float plotBottom = plotTop + plotHeight;
+        p.noStroke();
+        p.fill(labelBackgroundColor);
+        p.rect(viewportLeft, plotTop - topGridOverscan, plotLeft - LABEL_BAND_GAP, plotBottom);
     }
 
     private void drawYLabels(List<Tick> ticks) {
+        float plotBottom = plotTop + plotHeight;
         p.textAlign(Applet.RIGHT, Applet.CENTER);
         for (Tick tick : ticks) {
             float t = tick.labelAlpha;
@@ -596,10 +957,16 @@ public final class DataGrid {
             if (y < plotTop - topGridOverscan - 1f) {
                 break;
             }
-            if (y > plotTop + plotHeight + 1f || isOnWorldXAxis(y)) {
+            if (y > plotBottom + BOTTOM_GRID_OVERSCAN_PX) {
                 continue;
             }
-            applyLabelStyle(t, 1f);
+            float bottomFade = y <= plotBottom
+                    ? 1f
+                    : 1f - smoothstep((y - plotBottom) / BOTTOM_GRID_OVERSCAN_PX);
+            if (bottomFade <= ALPHA_EPSILON) {
+                continue;
+            }
+            applyLabelStyle(t, bottomFade);
             p.text(tick.label, yLabelX(), y);
         }
     }
@@ -607,7 +974,7 @@ public final class DataGrid {
     private void drawXLabels(List<Tick> ticks) {
         float labelY = plotTop + plotHeight + xLabelInset;
         float plotRight = plotLeft + plotWidth;
-        float fadeWidthPx = xBaseGapWidthPx();
+        float fadeWidthPx = xBaseGapWidthPx() * X_LABEL_EXIT_FADE_FRACTION;
 
         p.textAlign(Applet.CENTER, Applet.CENTER);
         for (Tick tick : ticks) {
@@ -626,6 +993,11 @@ public final class DataGrid {
                 continue;
             }
             float fade = xLabelFadeFactor(tick.value, x, fadeWidthPx);
+            // Overscan labels fade against the viewport's right edge instead
+            // of rendering half-clipped ("Jan 1, 20|").
+            applyLabelStyle(t, 1f);
+            float halfWidth = p.textWidth(tick.label) / 2f;
+            fade *= clamp01((p.width / 2f - x) / Math.max(1f, halfWidth * 1.2f));
             if (fade <= ALPHA_EPSILON) {
                 continue;
             }
@@ -642,7 +1014,7 @@ public final class DataGrid {
     private void applyLabelStyle(float t, float extraFade) {
         p.textSize(interpolate(minorLabelSize, majorLabelSize, t));
         float brightness = interpolate(68f, 100f, t);
-        float alpha = 100f * (float) Math.pow(t, 1.5) * extraFade;
+        float alpha = 100f * (float) Math.pow(t, 2.0) * extraFade;
         p.fill(0, 0, brightness, alpha);
     }
 
@@ -658,6 +1030,16 @@ public final class DataGrid {
 
     private String formatDefaultLabel(double value) {
         return numberFormat.format(cleanZero(value));
+    }
+
+    /** Tick-density constants are tuned on a 1920px canvas; scale them so any
+     *  render width picks the same families at the same domain window. */
+    private float densityScale() {
+        return p.width / REFERENCE_CANVAS_WIDTH;
+    }
+
+    private float subBaseRamp(float spacingPx, float startPx, float endPx) {
+        return smoothstep(clamp01((spacingPx - startPx) / (endPx - startPx)));
     }
 
     private float xBaseGapWidthPx() {
@@ -724,33 +1106,49 @@ public final class DataGrid {
         return index;
     }
 
+    /**
+     * Exit fade against the left plot edge. Only active once the camera has
+     * started eating the left edge (the rail collapse): a static framing must
+     * not dim ticks that merely sit near the edge — that read as "Apr 1 is
+     * already half-faded" on the opening frame of the race scene.
+     */
     private float leftVerticalFadeFactor(float x, float fadeWidthPx) {
-        if (fadeWidthPx <= 0f) {
+        if (currentCollapseProgress <= 0f || fadeWidthPx <= 0f) {
             return 1f;
         }
+        float raw;
         if (x <= plotLeft) {
-            return 0f;
+            raw = 0f;
+        } else if (x >= plotLeft + fadeWidthPx) {
+            raw = 1f;
+        } else {
+            raw = smoothstep((x - plotLeft) / fadeWidthPx);
         }
-        if (x >= plotLeft + fadeWidthPx) {
-            return 1f;
-        }
-        return (x - plotLeft) / fadeWidthPx;
+        return interpolate(1f, raw, currentCollapseProgress);
     }
 
+    /**
+     * The moving world y-axis dissolves over a SHORT zone as it crosses the
+     * plot edge, and is fully gone before it reaches the y-label text — the
+     * rest of its journey across the rail is hidden under the left band
+     * cover mask. (The old one-base-gap fade kept it ~40% visible all the
+     * way across the rail, slicing through the pinned labels.)
+     */
     private float yAxisFadeFactor(float x, float fadeWidthPx) {
         if (currentCollapseProgress <= 0f) {
             return 1f;
         }
-        if (fadeWidthPx <= 0f) {
+        float fadeZone = Math.min(fadeWidthPx, Y_AXIS_EXIT_FADE_PX);
+        if (fadeZone <= 0f) {
             return 1f;
         }
         if (x >= plotLeft) {
             return 1f;
         }
-        if (x <= plotLeft - fadeWidthPx) {
+        if (x <= plotLeft - fadeZone) {
             return 0f;
         }
-        return 1f - (plotLeft - x) / fadeWidthPx;
+        return 1f - smoothstep((plotLeft - x) / fadeZone);
     }
 
     private void drawWorldYAxis(float plotBottom) {
@@ -794,12 +1192,6 @@ public final class DataGrid {
     private double firstLineAtOrAfter(double min, double anchor, double step) {
         double index = Math.ceil((min - anchor - EPSILON) / step);
         return anchor + index * step;
-    }
-
-    /** Suppress the y label that sits exactly on the (visible) ground axis. */
-    private boolean isOnWorldXAxis(float y) {
-        float axisY = domainToCanvasY(yAnchor);
-        return axisY <= plotTop + plotHeight + 1f && Math.abs(y - axisY) < 1f;
     }
 
     private boolean isLeftAxisLabel(float x) {
