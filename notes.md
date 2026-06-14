@@ -174,14 +174,14 @@ This file is the handoff context for future Codex sessions. Read it before start
 - The final zoom-out pins the race head to its screen position: xMin eases
   back to day zero while the span solves for a constant head fraction, so
   dots and labels stay put and only the history compresses behind them.
-- Head labels: one shared column anchored at the midpoint of the race-front
-  head dots; only tracks with data within FRONT_TOLERANCE_DAYS (10) of "now"
-  join the column — retired lines keep their fading label at their own line
-  end (the wider 45-day RANK_GRACE_DAYS is for leader ranking only; using it
-  for the column once dragged all labels back onto the dots). A retiree's
-  label starts fading the moment it leaves the front (waiting out the rank
-  grace once parked it at full alpha in the advancing column's path), and
-  still participates in the vertical gap solve while it fades. Vertical
+- Head labels: one shared column anchored to the live race head
+  (`domainToCanvasX(min(tDay, xMax)) + LABEL_DOT_GAP_PX`); only tracks with
+  data within FRONT_TOLERANCE_DAYS (10) of "now" join the column, so a
+  just-retired label can fade in the column briefly, but frozen line ends do
+  not pull the anchor left. Once a retiree leaves the front, its label starts
+  fading at its own line end and still participates in the vertical gap solve
+  while it fades. The wider 45-day RANK_GRACE_DAYS is for leader ranking only;
+  using it for the column once dragged all labels back onto the dots. Vertical
   placement: pool-adjacent-violators isotonic min-gap spreading applied to
   the TARGETS only; displayed positions ease toward them (rate 6), so
   overtakes slide visibly past each other. Do NOT re-run the gap solve on

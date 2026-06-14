@@ -87,7 +87,7 @@ public final class Cs2TopPlayersScene extends Scene {
     private static final float RETIRE_LABEL_FADE_SECONDS = 1.0f;
     /**
      * Tracks whose data ends within this many days of "now" still count for
-     * ranking/labels. Without it, players whose last knot lands a few days
+     * ranking. Without it, players whose last knot lands a few days
      * before the global end of the dataset would all "retire" on the final
      * frames and hand #1 to whoever happens to have the latest knot.
      */
@@ -95,7 +95,7 @@ public final class Cs2TopPlayersScene extends Scene {
     /**
      * A track counts as part of the race FRONT (shared label column, label
      * queue) only while its data reaches within this many days of "now".
-     * The wider RANK_GRACE_DAYS is for ranking/label-fade only — using it
+     * The wider RANK_GRACE_DAYS is for ranking only — using it
      * for the column made a freshly-retired line drag the whole label column
      * back onto the dots.
      */
@@ -557,23 +557,17 @@ public final class Cs2TopPlayersScene extends Scene {
             }
         }
 
-        // One shared column for the front, anchored at the midpoint of its
-        // head dots (the generator aligns every active line's final knot, so
-        // they only differ while a line is mid-retirement). Labels may run
-        // past the plot into the right margin — only the viewport edge
-        // clips them.
+        // One shared column for the front, anchored to the live race head.
+        // Retiring tracks can keep fading in the column during the short front
+        // tolerance, but their frozen line ends must not pull the column left.
+        // Labels may run past the plot into the right margin — only the
+        // viewport edge clips them.
         p.textSize(LABEL_TEXT_SIZE);
         boolean anyLogo = false;
         float maxLabelWidth = 0f;
-        float minHeadX = Float.POSITIVE_INFINITY;
-        float maxHeadX = Float.NEGATIVE_INFINITY;
         for (Track track : visible) {
             maxLabelWidth = Math.max(maxLabelWidth, p.textWidth(headLabelText(track)));
             anyLogo |= teamLogoFor(track.teamAt(Math.min(tDay, track.lastDay))) != null;
-        }
-        for (Track track : front) {
-            minHeadX = Math.min(minHeadX, track.labelHeadX);
-            maxHeadX = Math.max(maxHeadX, track.labelHeadX);
         }
         float logoSpace = anyLogo ? LABEL_LOGO_SPACE_PX : 0f;
         // Feed the camera the room this frame's labels actually need, so the
@@ -581,9 +575,8 @@ public final class Cs2TopPlayersScene extends Scene {
         float requiredMargin = LABEL_DOT_GAP_PX + logoSpace + maxLabelWidth + LABEL_MARGIN_EXTRA_PX;
         followMarginPx = ease(followMarginPx, requiredMargin, dt, 2f);
         float clampX = halfViewportWidth() - maxLabelWidth - logoSpace - LABEL_MARGIN_EXTRA_PX;
-        float columnX = minHeadX <= maxHeadX
-                ? Math.min((minHeadX + maxHeadX) / 2f + LABEL_DOT_GAP_PX, clampX)
-                : clampX;
+        float frontX = grid.domainToCanvasX(Math.min(tDay, grid.getXMax()));
+        float columnX = Math.min(frontX + LABEL_DOT_GAP_PX, clampX);
 
         // Draw bottom rank first: during a swap the rising label has already
         // taken the higher rank, so it renders later — always in FRONT of
