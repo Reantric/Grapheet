@@ -107,11 +107,10 @@ This file is the handoff context for future Codex sessions. Read it before start
   the `1, 2, 5` ladder as nested, but 2x and 5x steps are not mutually nested
   (500 is not a multiple of 200), so two full label bands could render at once
   and the "dominant family" styling snapped discretely. Now all families merge
-  into a single tick list: each tick's alpha is the max over the families
-  containing it (continuous bump curve over log2 of px spacing), and size /
-  brightness / stroke derive continuously from that alpha. Crossfades are
-  smooth in both zoom directions; sub-base steps still fade in only when the
-  base family becomes sparse.
+  into a single tick list: each tick's alpha accumulates over the families
+  containing it, and size / brightness / stroke derive continuously from that
+  alpha. Crossfades are smooth in both zoom directions; label-band election
+  now uses measured density instead of hand-tuned pixel bump curves.
 - `DataGrid.setXCalendarAxis(LocalDate dayZero)` switches x to calendar mode:
   x values are days since `dayZero`; ticks sit on month / quarter (Jan 1,
   Apr 1, Jul 1, Oct 1) / year / 2-5-10-year boundaries and crossfade with the
@@ -195,19 +194,20 @@ This file is the handoff context for future Codex sessions. Read it before start
   margin within a fraction of a second of video, so the cooldown is what
   actually pins ties; the force threshold keeps genuine fast overtakes
   (donk 2024) from being delayed.
-- Grid density: quarter majors with soft month minors (calendar grid ideal
-  340px, plateau 0.5, support 1.85), years take over after the zoom-out;
-  y sub-base minor GRIDLINES stay hidden until genuinely zoomed in (ramp
-  110-190px) and sub-base LABELS need far sparser spacing still (ramp
-  260-380px — at the race's tightest y-window the base gap reaches ~250px,
-  and half-step labels collide with 2dp formatting: "1.13, 1.18" between
-  "1.10, 1.15"). Minor stroke floor lifted (brightness 34, alpha 28) for
-  visibility on ordinary displays. There are intentionally no sub-0.05
-  horizontal minor labels at any zoom the race reaches.
-- All DataGrid px-spacing density constants are tuned for a 1920px-wide
-  canvas and scaled by `width/1920` at use (`densityScale()`), so 1280px
-  rough cuts and 3840px direct-canvas finals pick the same tick families as
-  the 1920px design at the same domain window.
+- Grid density is now measured from label clearance instead of hand-tuned
+  pixel windows. For each numeric/calendar family, `DataGrid` computes
+  `density = spacingPx / (measuredLabelExtentPx * LABEL_GAP_COMFORT)`: y
+  labels use text height, x labels measure the widest visible string for
+  that family. The live label band is the finest family with density >= 1;
+  a readable incumbent stays latched, and a finer challenger needs
+  `LABEL_DENSITY_HYSTERESIS` extra clearance before taking over.
+- Gridlines follow that elected label band. Band lines are majors; one nested
+  finer family can fade in as soft minors based on ITS OWN density
+  (`MINOR_GRID_DENSITY_START..FULL`) and a structural
+  `MAX_MINOR_SUBDIVISIONS` cap. That removes the startup artifact where a
+  0.05 label band pulled in unlabeled 0.01 hairlines: 0.05 -> 0.01 is five
+  subdivisions and is suppressed, while ordinary 0.10 -> 0.05 and quarter ->
+  month minors can still render when spacing allows.
 - DataGrid edge fades: the left-edge exit fade only activates once the rail
   collapse has begun (a static framing must not dim ticks that merely sit
   near the edge — "Apr 1 already half-faded on the opening frame"); x labels
@@ -215,37 +215,15 @@ This file is the handoff context for future Codex sessions. Read it before start
   the leftmost date doesn't linger half-faded; the moving world y-axis
   dissolves within a <=48px zone at the plot edge and the left label band is
   drawn AFTER the axes as a cover mask, so the axis never slices through the
-  pinned y numbers; label crossfade alpha is pow(t, 2.0) with numeric label
-  support 0.95 for crisper family handoffs.
-- The bump curve is asymmetric (`SPARSE_SUPPORT_LOG2` 2.2): only the cramped
-  side fades at the per-curve support. An axis' base family has no coarser
-  stand-in, so dimming it for mere sparseness left the whole y rail grey at
-  the race's tight opening window; sparse ticks are clean, cramped ticks are
-  the actual problem.
-- Sub-base families gate per-depth: each finer family fades in only while
-  its PARENT (one ladder step coarser) is sparse, gates multiplying with
-  depth — one family of soft minors at a time. A single gate keyed on the
-  base family once admitted EVERY finer family at a tight window (0.025 AND
-  0.01 under a 0.05 base), rendering as a gridline mesh on the race's
-  opening frames. Grid ramp 150-300px, label ramp 260-380px (of 1920).
+  pinned y numbers; label crossfade alpha is pow(t, 2.0) for crisp family
+  handoffs.
 - Axis LABELS: exactly ONE family per axis is the live "label band"
-  (selectLabelBand): the strongest raw bump alpha wins, but a sitting
-  incumbent keeps the band unless the challenger beats it by
-  LABEL_BAND_STICKINESS (0.12). One band at a time is what prevents two
-  strong NON-NESTED families (5-year vs 2-year ticks; 500 vs 200) from
-  overprinting label text — a coarser-than-dominant suppression rule was
-  tried first and broke as soon as the coarse family became the strongest
-  ("Jan 1, 2025" garbled into 2024/2026 on the final hold).
-- GRIDLINES follow the same band (the old position-based grid bump curves
-  are gone): the band family's lines are the majors, exactly one family
-  finer renders as soft minors (MINOR_GRID_STRENGTH x the SUB_BASE_GRID
-  ramp evaluated on the BAND's spacing — this is also what fades finer
-  structure back in when the band goes sparse), and every other family
-  fades out — lines whose labels died must die with them. Grid fade states
-  share the nested snap/linger transitions.
+  (selectLabelBand). One band at a time prevents two strong NON-NESTED
+  families (5-year vs 2-year ticks; 500 vs 200) from overprinting label text.
+  Grid fade states still share the nested snap/linger transitions.
 - Band crossfades are TIME-based (fadedAlpha): each family's rendered
-  alpha eases toward its target (in 4.5/s; out 7/s on x where dying labels
-  keep compressing during zooms, a gentler 4.2/s on y). Driving rendered
+  alpha eases toward its target (in 4.5/s; out 5.5/s on x where dying labels
+  keep compressing during zooms, a gentler 3.2/s on y). Driving rendered
   alpha straight off pixel spacing left labels stuck at mid-grey for tens
   of seconds when the camera drifted slowly through a crossfade boundary.
   Scenes on the fixed-timestep export clock must pass dt via
@@ -274,16 +252,11 @@ This file is the handoff context for future Codex sessions. Read it before start
   (~31s of video). The discount fades off in sync with the final zoom-out,
   which must frame the full history again (stress-tested with a synthetic
   2.5-peak/0.8-trough player).
-- Numeric label ideal spacing is 175px (of 1920): smaller ideals let the
-  0.05 y band hold on to ~92-107px spacing, which read as overcrowded
-  before the hand-off fired.
-- The election bump curve is SYMMETRIC: rendered alphas are band-binary,
-  so the curve only drives the election — a sparse-side leniency there
-  meant a sparse coarse incumbent's raw never decayed and refinements
-  (fading finer labels back in when the window contracts) could never
-  unseat it. Refinement challengers also get a reduced stickiness
-  (LABEL_BAND_REFINE_STICKINESS 0.04 vs 0.12 for coarsening) — no flap
-  risk because the reverse trip still faces the full coarsening margin.
+- Density refactor verification frames:
+  `output/density-check/frame-0-08.png` and `frame-3-28.png` from 1080p
+  fixed-timestep exports. At 0:08 the old unlabeled 0.01 mesh is gone; the
+  clearance model elects denser y labels only where the measured text height
+  has room. At 3:28 the y-axis remains readable with the same density logic.
 - 1080p sizing pass: line stroke 5.2px (+1.8 leader boost), head dots
   15px, player label text 38px, min gap 46px, logo box 36px; follow
   camera capped at 0.83 with 56px extra label margin so dots/lines end
@@ -296,14 +269,9 @@ This file is the handoff context for future Codex sessions. Read it before start
   at full until the finer band finishes fading in, then drops invisibly
   (xLingeringBandKey / yLingeringBandKey). Only non-nested switches (2<->5,
   two-year<->five-year) get a true simultaneous crossfade.
-- Calendar label alphas carry a physical collision factor: the family's
-  spacing is compared against the measured label INK width (0.9x the
-  textWidth advance — using the raw advance dented the final two-year band
-  enough to flip the closing election to sparse five-year labels). The
-  bump curve alone happily kept full-alpha quarter labels while they
-  compressed to zero gap during the final zoom-out. Below raw 0.5 the
-  incumbent band also loses its election stickiness (LABEL_BAND_CRAMP_FLOOR),
-  so the hand-off fires right at first text contact.
+- Calendar label density now measures the widest visible full date string for
+  each family instead of using a fixed reference date; this keeps zoom-out
+  hand-offs tied to actual rendered text.
 - X labels fade against the viewport's right edge (1.2x half-width ramp)
   instead of rendering half-clipped in the overscan ("Jan 1, 20|").
 - While the world y-axis line is visible, vertical gridlines within

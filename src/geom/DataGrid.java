@@ -24,14 +24,13 @@ import java.util.function.DoubleFunction;
  *
  * <p>Tick model: candidate steps come from the nice-step ladder
  * {@code ... 1, 2, 5, 10, 20, 50 ...} (or calendar boundaries — month,
- * quarter, year, 2/5/10 years — when the x axis is in calendar mode). Each
- * family gets a continuous alpha from a bump curve over the log of its
- * screen-space spacing, so families fade in as their spacing approaches a
- * comfortable ideal and fade out as they get cramped or too sparse.
+ * quarter, year, 2/5/10 years — when the x axis is in calendar mode). The
+ * label band is elected from physical density: screen-space spacing divided
+ * by measured label clearance for the actual font and visible strings.
  *
  * <p>Families on the ladder are not mutually nested (500 is not a multiple of
  * 200), so families are NOT rendered independently. Instead all visible
- * families are merged into one tick list; a tick's alpha is the max over the
+ * families are merged into one tick list; a tick's alpha accumulates over the
  * families that contain it, and its visual style (size, brightness, stroke)
  * derives continuously from that alpha. This is what makes zoom transitions
  * read as a clean crossfade instead of duplicated/cramped label bands.
@@ -46,13 +45,12 @@ public final class DataGrid {
     private static final float BOTTOM_AXIS_FALL_FADE_PX = 36f;
     private static final float Y_AXIS_EXIT_FADE_PX = 48f;
     // Label crossfades are TIME-based and exactly ONE family per axis is
-    // the live "label band": the position-derived bump alphas only elect
-    // the band (the incumbent keeps it unless a challenger clearly beats
-    // it), and each family's rendered alpha eases toward in-band/not at a
-    // fixed rate. Driving rendered alphas straight off pixel spacing left
-    // labels stuck at mid-grey for tens of seconds when the camera crawled
-    // through a crossfade, and any rule that allowed two strong NON-NESTED
-    // families at once (5-year vs 2-year ticks) overprinted label text.
+    // the live "label band": density only elects the band, and each family's
+    // rendered alpha eases toward in-band/not at a fixed rate. Driving
+    // rendered alpha straight off pixel spacing left labels stuck at mid-grey
+    // for tens of seconds when the camera crawled through a crossfade, and
+    // any rule that allowed two strong NON-NESTED families at once (5-year vs
+    // two-year ticks) overprinted label text.
     private static final float LABEL_FADE_IN_RATE = 4.5f;
     /** X fade-out stays fast: during a zoom the dying calendar labels keep
      *  compressing toward their neighbours, so the ghost-overlap window
@@ -60,21 +58,10 @@ public final class DataGrid {
      *  with a gentler exit. */
     private static final float X_LABEL_FADE_OUT_RATE = 5.5f;
     private static final float Y_LABEL_FADE_OUT_RATE = 3.2f;
-    /** Hysteresis for a COARSER challenger taking the band (and general
-     *  anti-flap margin). */
-    private static final float LABEL_BAND_STICKINESS = 0.12f;
-    /** A FINER challenger only needs a tiny edge: refinements (fading
-     *  detail back in when the window contracts) were effectively
-     *  unreachable behind the full stickiness, because a sparse incumbent's
-     *  raw alpha rarely drops far below a near-ideal finer family's. At
-     *  0.02 (with ideal 175) the y band refines at ~127px base spacing and
-     *  coarsens at ~118px — a clean hysteresis gap, no flap zone. */
-    private static final float LABEL_BAND_REFINE_STICKINESS = 0.02f;
-    /** Below this raw alpha the incumbent's labels are getting physically
-     *  cramped — it loses its stickiness and even concedes a small bias to
-     *  the challenger, so the hand-off fires BEFORE full-brightness labels
-     *  compress into each other during a fast zoom-out. */
-    private static final float LABEL_BAND_CRAMP_FLOOR = 0.5f;
+    /** Multiplicative breathing room around measured label ink. */
+    private static final float LABEL_GAP_COMFORT = 1.35f;
+    /** Extra clearance a finer challenger needs before it takes the band. */
+    private static final float LABEL_DENSITY_HYSTERESIS = 0.12f;
     /** Shared left-edge exit window for x gridlines AND their labels (a
      *  fraction of the base gap), so both leave together and the leftmost
      *  date does not hang around half-faded for seconds. */
@@ -83,53 +70,13 @@ public final class DataGrid {
      *  much and dissolve, instead of popping out at the boundary. */
     private static final float BOTTOM_GRID_OVERSCAN_PX = 30f;
 
-    // Numeric-axis bump curves (log2 distance from the ideal spacing).
-    // All *_SPACING_PX / *_RAMP_*_PX constants are tuned for a 1920px-wide
-    // canvas and are scaled by densityScale() at use, so a 1280px rough cut
-    // and a 3840px final pick the same tick families as the 1920px design.
-    private static final float REFERENCE_CANVAS_WIDTH = 1920f;
-    /** Calibrated against the user's two reference frames: the y band must
-     *  coarsen by ~104px base spacing (raw < 0.88 vs a full challenger)
-     *  and refine again above ~111px (incumbent raw < 0.98 + refine edge). */
-    private static final float LABEL_IDEAL_SPACING_PX = 154f;
-    private static final float LABEL_PLATEAU_LOG2 = 0.5f;
-    private static final float LABEL_SUPPORT_LOG2 = 0.95f;
-
-    // Calendar-axis label bump curve. Labels stay sparse (full
-    // "Dec 1, 2013"-style text needs room, so quarters dominate a ~1-year
-    // window and years take over after a zoom-out).
-    private static final float DATE_LABEL_IDEAL_SPACING_PX = 430f;
-    private static final float DATE_LABEL_PLATEAU_LOG2 = 0.6f;
-    private static final float DATE_LABEL_SUPPORT_LOG2 = 1.5f;
-
     // GRIDLINES follow the label band: the band family's lines are the
-    // majors, the family ONE step finer shows as soft minors gated by the
-    // room the band's spacing leaves (SUB_BASE_GRID ramp), and every other
-    // family fades out — lines whose labels died must die with them.
+    // majors, and a nested finer family can appear as soft minors only when
+    // its own spacing is readable as structure.
     private static final float MINOR_GRID_STRENGTH = 0.55f;
-
-    // Steps finer than the configured base step only fade in once the base
-    // family itself has become sparse (px spacing of the base family) —
-    // matching the pre-rework branch, where sub-base lines stayed hidden at
-    // ordinary zoom and the grid kept one clean dominant rhythm.
-    // A sub-base family fades in only while its PARENT family (one ladder
-    // step coarser) is sparse: gates accumulate multiplicatively with depth,
-    // so one family of soft minors appears at a time. (A single gate keyed
-    // on the base family's spacing once admitted EVERY finer family at a
-    // tight window — 0.025 AND 0.01 under a 0.05 base — reading as a mesh
-    // of gridlines at the race scene's opening frame.)
-    private static final float SUB_BASE_GRID_RAMP_START_PX = 150f;
-    private static final float SUB_BASE_GRID_RAMP_END_PX = 300f;
-    // Sub-base LABELS need sparser parent spacing than gridlines before
-    // they help. With the time-based crossfade the raw gate value must
-    // exceed LABEL_FADE_ON_THRESHOLD before finer labels actually switch
-    // on, so the effective trigger sits well above the ramp start — at the
-    // race scene's tightest y-window (base gap ~250px of 1920) finer labels
-    // stay off, while genuinely sparse spacing pulls them in. Scenes whose
-    // formatter would round sub-base values badly should use an adaptive
-    // precision formatter.
-    private static final float SUB_BASE_LABEL_RAMP_START_PX = 210f;
-    private static final float SUB_BASE_LABEL_RAMP_END_PX = 320f;
+    private static final float MINOR_GRID_DENSITY_START = 0.75f;
+    private static final float MINOR_GRID_DENSITY_FULL = 1.25f;
+    private static final float MAX_MINOR_SUBDIVISIONS = 4f;
 
     private final Applet p;
     private final DecimalFormat numberFormat = new DecimalFormat("0.##");
@@ -426,26 +373,21 @@ public final class DataGrid {
             return new ArrayList<>();
         }
 
+        double low = Math.min(min, anchor);
+        double high = max + span * (overscanPx / pixelSpan);
+
         int firstIndex = niceStepFloorIndex(baseStep, span * 8.0 / pixelSpan) - 1;
         int lastIndex = niceStepFloorIndex(baseStep, span * 1500.0 / pixelSpan) + 2;
+        boolean isYAxis = labelFadeStates == yLabelFadeStates;
 
-        float scale = densityScale();
-        // Per-depth label gates: gate(index) = product over j in (index, 0]
-        // of ramp(parent spacing of family j) — each finer family needs
-        // every ancestor down from the base to have gone sparse first.
-        int subDepth = Math.max(0, -firstIndex);
-        float[] subLabelGate = new float[subDepth];
-        float labelGateAcc = 1f;
-        for (int index = -1; index >= firstIndex; index--) {
-            float parentSpacingPx = (float) (pixelSpan * (niceStep(baseStep, index + 1) / span));
-            labelGateAcc *= subBaseRamp(parentSpacingPx,
-                    SUB_BASE_LABEL_RAMP_START_PX * scale, SUB_BASE_LABEL_RAMP_END_PX * scale);
-            subLabelGate[-1 - index] = labelGateAcc;
-        }
+        ensureFont();
+        p.textFont(font);
+        p.textSize(majorLabelSize);
+        float yLabelClearancePx = labelClearancePx(axisLabelExtentPx(true));
 
         int count = lastIndex - firstIndex + 1;
         double[] steps = new double[count];
-        float[] rawLabelAlphas = new float[count];
+        float[] labelDensities = new float[count];
         Object[] fadeKeys = new Object[count];
         for (int i = 0; i < count; i++) {
             int index = firstIndex + i;
@@ -456,18 +398,15 @@ public final class DataGrid {
                 continue;
             }
             float spacingPx = (float) (pixelSpan * (step / span));
-            float labelAlpha = bumpAlpha(spacingPx, LABEL_IDEAL_SPACING_PX * scale,
-                    LABEL_PLATEAU_LOG2, LABEL_SUPPORT_LOG2);
-            if (index < 0) {
-                labelAlpha *= subLabelGate[-1 - index];
-            }
-            rawLabelAlphas[i] = labelAlpha;
+            float labelClearancePx = isYAxis
+                    ? yLabelClearancePx
+                    : labelClearancePx(maxNumericLabelWidth(low, high, anchor, step, formatter));
+            labelDensities[i] = spacingPx / labelClearancePx;
         }
 
-        boolean isYAxis = labelFadeStates == yLabelFadeStates;
         Object previousBand = isYAxis ? yLabelBandKey : xLabelBandKey;
         Object lingering = isYAxis ? yLingeringBandKey : xLingeringBandKey;
-        Object band = selectLabelBand(previousBand, fadeKeys, rawLabelAlphas);
+        Object band = selectLabelBand(previousBand, fadeKeys, labelDensities);
         if (previousBand != null && !band.equals(previousBand)) {
             Nesting nesting = previousBand instanceof Integer oldIndex && band instanceof Integer newIndex
                     ? numericNesting(baseStep, oldIndex, newIndex)
@@ -476,21 +415,26 @@ public final class DataGrid {
                     labelFadeStates, gridFadeStates, previousBand, band, lingering, nesting);
         }
 
-        // Gridlines follow the band: band lines are the majors, the nearest
-        // finer family whose step DIVIDES the band step fades in as soft
-        // minors when the band's spacing leaves room (a non-dividing rung —
-        // 0.02 under a 0.05 band — would lay an irregular rhythm against
-        // the majors), everything else dies with its labels.
+        // Gridlines follow the band: band lines are the majors, and the nearest
+        // finer family whose step divides the band can fade in as soft minors
+        // only if its own spacing is readable.
         int bandIndex = (Integer) band;
         double bandStep = niceStep(baseStep, bandIndex);
-        float bandSpacingPx = (float) (pixelSpan * (bandStep / span));
-        int minorIndex = bandIndex - 1;
-        while (minorIndex > bandIndex - 4
-                && !isIntegerMultiple(bandStep, niceStep(baseStep, minorIndex))) {
-            minorIndex--;
+        int minorIndex = numericMinorIndex(baseStep, bandIndex);
+        float minorTarget = 0f;
+        if (minorIndex >= firstIndex && minorIndex <= lastIndex) {
+            double minorStep = niceStep(baseStep, minorIndex);
+            float subdivisions = (float) (bandStep / minorStep);
+            if (subdivisions <= MAX_MINOR_SUBDIVISIONS + EPSILON) {
+                float minorSpacingPx = (float) (pixelSpan * (minorStep / span));
+                float minorClearancePx = isYAxis
+                        ? yLabelClearancePx
+                        : labelClearancePx(maxNumericLabelWidth(low, high, anchor, minorStep, formatter));
+                float minorDensity = minorSpacingPx / minorClearancePx;
+                minorTarget = MINOR_GRID_STRENGTH * densityRamp(
+                        minorDensity, MINOR_GRID_DENSITY_START, MINOR_GRID_DENSITY_FULL);
+            }
         }
-        float minorTarget = MINOR_GRID_STRENGTH * subBaseRamp(bandSpacingPx,
-                SUB_BASE_GRID_RAMP_START_PX * scale, SUB_BASE_GRID_RAMP_END_PX * scale);
 
         float outRate = isYAxis ? Y_LABEL_FADE_OUT_RATE : X_LABEL_FADE_OUT_RATE;
         float[] labelAlphas = new float[count];
@@ -530,9 +474,6 @@ public final class DataGrid {
         // exactly, with no floating-point near-miss duplicates.
         double keyUnit = finestStep / 2.0;
 
-        double low = Math.min(min, anchor);
-        double high = max + span * (overscanPx / pixelSpan);
-
         TreeMap<Long, Tick> merged = new TreeMap<>();
         for (double[] family : families) {
             double step = family[0];
@@ -566,31 +507,17 @@ public final class DataGrid {
         double low = Math.min(xMin, xAnchor);
         double high = xMax + span * (rightGridOverscan / plotWidth);
 
-        float scale = densityScale();
-        // Physical collision guard: the bump curve alone happily keeps a
-        // family at full alpha while its ~160px label texts compress to
-        // zero gap during the final zoom-out. Measure the real text width
-        // and kill a family's label alpha as its spacing reaches it, which
-        // also trips the election's cramp floor right at first contact.
         ensureFont();
         p.textFont(font);
         p.textSize(majorLabelSize);
-        // textWidth() returns the advance width; the visible ink is ~10%
-        // narrower (side bearings). Using the raw advance dented the final
-        // two-year band (183px spacing vs ~185px advance) enough to flip
-        // the election to sparse five-year labels even though the rendered
-        // texts had clear gaps.
-        float labelInkPx = 0.9f * p.textWidth("Jan 1, 2028");
         CalendarFamily[] families = CalendarFamily.values();
-        float[] rawLabelAlphas = new float[families.length];
+        float[] labelDensities = new float[families.length];
         for (int i = 0; i < families.length; i++) {
             float spacingPx = (float) (plotWidth * (families[i].averageDays / span));
-            float cramp = smoothstep(clamp01((spacingPx - labelInkPx) / (14f * scale)));
-            rawLabelAlphas[i] = cramp * bumpAlpha(spacingPx, DATE_LABEL_IDEAL_SPACING_PX * scale,
-                    DATE_LABEL_PLATEAU_LOG2, DATE_LABEL_SUPPORT_LOG2);
+            labelDensities[i] = spacingPx / labelClearancePx(maxCalendarLabelWidth(low, high, families[i]));
         }
         Object previousBand = xLabelBandKey;
-        Object band = selectLabelBand(previousBand, families, rawLabelAlphas);
+        Object band = selectLabelBand(previousBand, families, labelDensities);
         if (previousBand != null && !band.equals(previousBand)) {
             Nesting nesting = previousBand instanceof CalendarFamily oldFamily
                     && band instanceof CalendarFamily newFamily
@@ -602,17 +529,22 @@ public final class DataGrid {
         xLabelBandKey = band;
 
         // Gridlines follow the band (majors = band, soft minors = the
-        // nearest finer family that NESTS into the band — skipping
-        // two-year under a five-year band — while the band's spacing
-        // leaves room; the rest fade out).
+        // nearest finer family that nests into the band and has enough
+        // spacing to read as structure; the rest fade out).
         CalendarFamily bandFamily = (CalendarFamily) band;
-        float bandSpacingPx = (float) (plotWidth * (bandFamily.averageDays / span));
-        float minorTarget = MINOR_GRID_STRENGTH * subBaseRamp(bandSpacingPx,
-                SUB_BASE_GRID_RAMP_START_PX * scale, SUB_BASE_GRID_RAMP_END_PX * scale);
         CalendarFamily minorFamily = null;
+        float minorTarget = 0f;
         for (int i = bandFamily.ordinal() - 1; i >= 0; i--) {
             if (calendarNesting(bandFamily, families[i]) == Nesting.OLD_WITHIN_NEW) {
                 minorFamily = families[i];
+                float subdivisions = (float) (bandFamily.averageDays / minorFamily.averageDays);
+                if (subdivisions <= MAX_MINOR_SUBDIVISIONS + EPSILON) {
+                    float minorSpacingPx = (float) (plotWidth * (minorFamily.averageDays / span));
+                    float minorDensity = minorSpacingPx
+                            / labelClearancePx(maxCalendarLabelWidth(low, high, minorFamily));
+                    minorTarget = MINOR_GRID_STRENGTH * densityRamp(
+                            minorDensity, MINOR_GRID_DENSITY_START, MINOR_GRID_DENSITY_FULL);
+                }
                 break;
             }
         }
@@ -662,38 +594,34 @@ public final class DataGrid {
     }
 
     /**
-     * Elect the single live label-band family for an axis: the candidate
-     * with the strongest raw bump alpha, except a sitting incumbent keeps
-     * the band unless the challenger clearly beats it (stickiness). One
-     * band at a time is what prevents two strong NON-NESTED families
-     * (5-year vs 2-year ticks, 500 vs 200) from overprinting label text;
-     * nested transitions share tick positions and crossfade invisibly.
+     * Elect the single live label-band family for an axis from physical label
+     * density: the finest family whose spacing clears the measured label
+     * extent. The incumbent stays while still readable, and a finer challenger
+     * needs a little extra room before taking over.
      */
-    private Object selectLabelBand(Object incumbentKey, Object[] keys, float[] rawAlphas) {
-        int best = 0;
+    private Object selectLabelBand(Object incumbentKey, Object[] keys, float[] densities) {
+        int desired = keys.length - 1;
         int incumbent = -1;
+        boolean foundReadable = false;
         for (int i = 0; i < keys.length; i++) {
-            if (rawAlphas[i] > rawAlphas[best]) {
-                best = i;
+            if (!foundReadable && densities[i] >= 1f) {
+                desired = i;
+                foundReadable = true;
             }
             if (keys[i].equals(incumbentKey)) {
                 incumbent = i;
             }
         }
         if (incumbent >= 0) {
-            // Keys are ordered finest-first: a challenger at a smaller index
-            // is a refinement and only needs a small edge.
-            float stickiness = best < incumbent
-                    ? LABEL_BAND_REFINE_STICKINESS
-                    : LABEL_BAND_STICKINESS;
-            float bias = rawAlphas[incumbent] >= LABEL_BAND_CRAMP_FLOOR
-                    ? stickiness
-                    : -0.05f;
-            if (rawAlphas[incumbent] + bias >= rawAlphas[best]) {
+            if (incumbent <= desired && densities[incumbent] >= 1f) {
+                return keys[incumbent];
+            }
+            if (desired < incumbent
+                    && densities[desired] < 1f + LABEL_DENSITY_HYSTERESIS) {
                 return keys[incumbent];
             }
         }
-        return keys[best];
+        return keys[desired];
     }
 
     /**
@@ -812,27 +740,60 @@ public final class DataGrid {
         return month + " " + date.getDayOfMonth() + ", " + date.getYear();
     }
 
-    /**
-     * Continuous fade curve: full alpha while the family's pixel spacing is
-     * within {@code plateauLog2} octaves of the ideal spacing, easing to
-     * zero at {@code supportLog2} octaves. Symmetric: rendered alphas are
-     * band-binary nowadays, so this curve only drives the band ELECTION —
-     * and there a sparse-side leniency is harmful, because a sparse coarse
-     * incumbent whose raw never decays can never be unseated by a finer
-     * family when the window contracts (the "reverse" fade-in).
-     */
-    private float bumpAlpha(float spacingPx, float idealPx, float plateauLog2, float supportLog2) {
-        if (spacingPx <= 0f) {
-            return 0f;
+    private float axisLabelExtentPx(boolean yAxis) {
+        if (yAxis) {
+            float height = p.textAscent() + p.textDescent();
+            return Math.max(1f, height);
         }
-        float u = Math.abs((float) (Math.log(spacingPx / idealPx) / Math.log(2)));
-        if (u <= plateauLog2) {
-            return 1f;
+        return Math.max(1f, p.textWidth("0"));
+    }
+
+    private float labelClearancePx(float labelExtentPx) {
+        return Math.max(1f, labelExtentPx * LABEL_GAP_COMFORT);
+    }
+
+    private float maxNumericLabelWidth(
+            double low,
+            double high,
+            double anchor,
+            double step,
+            DoubleFunction<String> formatter
+    ) {
+        float maxWidth = 1f;
+        double first = firstLineAtOrAfter(low, anchor, step);
+        for (double value = first; value <= high + EPSILON; value += step) {
+            maxWidth = Math.max(maxWidth, p.textWidth(formatter.apply(cleanZero(value))));
         }
-        if (u >= supportLog2) {
-            return 0f;
+        return maxWidth;
+    }
+
+    private float maxCalendarLabelWidth(double low, double high, CalendarFamily family) {
+        float maxWidth = 1f;
+        LocalDate date = family.firstBoundaryOnOrAfter(
+                xCalendarDayZero.plusDays((long) Math.floor(low)));
+        while (true) {
+            long day = ChronoUnit.DAYS.between(xCalendarDayZero, date);
+            if (day > high + EPSILON) {
+                break;
+            }
+            maxWidth = Math.max(maxWidth, p.textWidth(calendarLabel(date)));
+            date = family.next(date);
         }
-        return 1f - smoothstep((u - plateauLog2) / (supportLog2 - plateauLog2));
+        return maxWidth;
+    }
+
+    private int numericMinorIndex(double baseStep, int bandIndex) {
+        double bandStep = niceStep(baseStep, bandIndex);
+        for (int index = bandIndex - 1; index > bandIndex - 4; index--) {
+            if (isIntegerMultiple(bandStep, niceStep(baseStep, index))) {
+                return index;
+            }
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    private float densityRamp(float density, float start, float end) {
+        return smoothstep(clamp01((density - start) / (end - start)));
     }
 
     // ------------------------------------------------------------------
@@ -1061,16 +1022,6 @@ public final class DataGrid {
 
     private String formatDefaultLabel(double value) {
         return numberFormat.format(cleanZero(value));
-    }
-
-    /** Tick-density constants are tuned on a 1920px canvas; scale them so any
-     *  render width picks the same families at the same domain window. */
-    private float densityScale() {
-        return p.width / REFERENCE_CANVAS_WIDTH;
-    }
-
-    private float subBaseRamp(float spacingPx, float startPx, float endPx) {
-        return smoothstep(clamp01((spacingPx - startPx) / (endPx - startPx)));
     }
 
     private float xBaseGapWidthPx() {
