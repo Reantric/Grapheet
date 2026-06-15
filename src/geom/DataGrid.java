@@ -58,8 +58,10 @@ public final class DataGrid {
      *  with a gentler exit. */
     private static final float X_LABEL_FADE_OUT_RATE = 5.5f;
     private static final float Y_LABEL_FADE_OUT_RATE = 3.2f;
-    /** Multiplicative breathing room around measured label ink. */
-    private static final float LABEL_GAP_COMFORT = 1.35f;
+    /** Multiplicative breathing room around measured label ink. Tuned to
+     *  preserve the approved PR8 coarse label cadence while keeping the
+     *  density model tied to actual text metrics. */
+    private static final float LABEL_GAP_COMFORT = 4.0f;
     /** Extra clearance a finer challenger needs before it takes the band. */
     private static final float LABEL_DENSITY_HYSTERESIS = 0.12f;
     /** Shared left-edge exit window for x gridlines AND their labels (a
