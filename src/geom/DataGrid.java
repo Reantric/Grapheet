@@ -58,10 +58,13 @@ public final class DataGrid {
      *  with a gentler exit. */
     private static final float X_LABEL_FADE_OUT_RATE = 5.5f;
     private static final float Y_LABEL_FADE_OUT_RATE = 3.2f;
-    /** Multiplicative breathing room around measured label ink. Tuned to
-     *  preserve the approved PR8 coarse label cadence while keeping the
-     *  density model tied to actual text metrics. */
-    private static final float LABEL_GAP_COMFORT = 4.0f;
+    /** Multiplicative breathing room around measured y-label ink. Tuned to
+     *  preserve the approved PR8 coarse horizontal-grid cadence while keeping
+     *  the density model tied to actual text metrics. */
+    private static final float Y_LABEL_GAP_COMFORT = 4.0f;
+    /** Calendar/numeric x labels need their own horizontal cadence; sharing
+     *  the y comfort makes the date axis too sparse. */
+    private static final float X_LABEL_GAP_COMFORT = 1.35f;
     /** Extra clearance a finer challenger needs before it takes the band. */
     private static final float LABEL_DENSITY_HYSTERESIS = 0.12f;
     /** Shared left-edge exit window for x gridlines AND their labels (a
@@ -385,7 +388,7 @@ public final class DataGrid {
         ensureFont();
         p.textFont(font);
         p.textSize(majorLabelSize);
-        float yLabelClearancePx = labelClearancePx(axisLabelExtentPx(true));
+        float yLabelClearancePx = labelClearancePx(axisLabelExtentPx(true), Y_LABEL_GAP_COMFORT);
 
         int count = lastIndex - firstIndex + 1;
         double[] steps = new double[count];
@@ -402,7 +405,8 @@ public final class DataGrid {
             float spacingPx = (float) (pixelSpan * (step / span));
             float labelClearancePx = isYAxis
                     ? yLabelClearancePx
-                    : labelClearancePx(maxNumericLabelWidth(low, high, anchor, step, formatter));
+                    : labelClearancePx(maxNumericLabelWidth(low, high, anchor, step, formatter),
+                            X_LABEL_GAP_COMFORT);
             labelDensities[i] = spacingPx / labelClearancePx;
         }
 
@@ -431,7 +435,8 @@ public final class DataGrid {
                 float minorSpacingPx = (float) (pixelSpan * (minorStep / span));
                 float minorClearancePx = isYAxis
                         ? yLabelClearancePx
-                        : labelClearancePx(maxNumericLabelWidth(low, high, anchor, minorStep, formatter));
+                        : labelClearancePx(maxNumericLabelWidth(low, high, anchor, minorStep, formatter),
+                                X_LABEL_GAP_COMFORT);
                 float minorDensity = minorSpacingPx / minorClearancePx;
                 minorTarget = MINOR_GRID_STRENGTH * densityRamp(
                         minorDensity, MINOR_GRID_DENSITY_START, MINOR_GRID_DENSITY_FULL);
@@ -516,7 +521,8 @@ public final class DataGrid {
         float[] labelDensities = new float[families.length];
         for (int i = 0; i < families.length; i++) {
             float spacingPx = (float) (plotWidth * (families[i].averageDays / span));
-            labelDensities[i] = spacingPx / labelClearancePx(maxCalendarLabelWidth(low, high, families[i]));
+            labelDensities[i] = spacingPx / labelClearancePx(
+                    maxCalendarLabelWidth(low, high, families[i]), X_LABEL_GAP_COMFORT);
         }
         Object previousBand = xLabelBandKey;
         Object band = selectLabelBand(previousBand, families, labelDensities);
@@ -543,7 +549,8 @@ public final class DataGrid {
                 if (subdivisions <= MAX_MINOR_SUBDIVISIONS + EPSILON) {
                     float minorSpacingPx = (float) (plotWidth * (minorFamily.averageDays / span));
                     float minorDensity = minorSpacingPx
-                            / labelClearancePx(maxCalendarLabelWidth(low, high, minorFamily));
+                            / labelClearancePx(maxCalendarLabelWidth(low, high, minorFamily),
+                                    X_LABEL_GAP_COMFORT);
                     minorTarget = MINOR_GRID_STRENGTH * densityRamp(
                             minorDensity, MINOR_GRID_DENSITY_START, MINOR_GRID_DENSITY_FULL);
                 }
@@ -750,8 +757,8 @@ public final class DataGrid {
         return Math.max(1f, p.textWidth("0"));
     }
 
-    private float labelClearancePx(float labelExtentPx) {
-        return Math.max(1f, labelExtentPx * LABEL_GAP_COMFORT);
+    private float labelClearancePx(float labelExtentPx, float comfort) {
+        return Math.max(1f, labelExtentPx * comfort);
     }
 
     private float maxNumericLabelWidth(

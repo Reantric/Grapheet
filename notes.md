@@ -196,14 +196,14 @@ This file is the handoff context for future Codex sessions. Read it before start
   (donk 2024) from being delayed.
 - Grid density is now measured from label clearance instead of hand-tuned
   pixel windows. For each numeric/calendar family, `DataGrid` computes
-  `density = spacingPx / (measuredLabelExtentPx * LABEL_GAP_COMFORT)`: y
-  labels use text height, x labels measure the widest visible string for
-  that family. `LABEL_GAP_COMFORT` is intentionally a visual-cadence target
-  (currently 4.0), not a collision floor; the first PR12 value of 1.35 made
-  the y axis 2-3x too fine versus PR8. The live label band is the finest
-  family with density >= 1; a readable incumbent stays latched, and a finer
-  challenger needs `LABEL_DENSITY_HYSTERESIS` extra clearance before taking
-  over.
+  `density = spacingPx / (measuredLabelExtentPx * comfort)`: y labels use
+  text height with `Y_LABEL_GAP_COMFORT = 4.0`, while x/calendar labels
+  measure the widest visible string with `X_LABEL_GAP_COMFORT = 1.35`.
+  These are split on purpose: the first PR12 value of 1.35 made the y axis
+  2-3x too fine, but sharing the y comfort made the date axis too coarse.
+  The live label band is the finest family with density >= 1; a readable
+  incumbent stays latched, and a finer challenger needs
+  `LABEL_DENSITY_HYSTERESIS` extra clearance before taking over.
 - Gridlines follow that elected label band. Band lines are majors; one nested
   finer family can fade in as soft minors based on ITS OWN density
   (`MINOR_GRID_DENSITY_START..FULL`) and a structural
@@ -256,11 +256,11 @@ This file is the handoff context for future Codex sessions. Read it before start
   which must frame the full history again (stress-tested with a synthetic
   2.5-peak/0.8-trough player).
 - Density refactor verification frames:
-  `output/density-comfort3-check/frame-0-08-comfort4.png` and
-  `frame-3-28-comfort4.png` from 1080p fixed-timestep exports. At 0:08 the
-  old unlabeled 0.01 mesh is gone and the y labels stay at 0.05. At 3:28
-  the y labels are back at 0.10 with faint 0.05 minor lines, matching the
-  PR8 cadence while keeping minor gating structural.
+  `output/density-splitcomfort-check/frame-0-08.png` and `frame-3-28.png`
+  from 1080p fixed-timestep exports. At 0:08 the old unlabeled 0.01 mesh is
+  gone, y labels stay at 0.05, and quarterly x labels are visible. At 3:28
+  y labels are 0.10 with faint 0.05 minor lines, and the x axis remains at
+  the desired quarterly cadence.
 - 1080p sizing pass: line stroke 5.2px (+1.8 leader boost), head dots
   15px, player label text 38px, min gap 46px, logo box 36px; follow
   camera capped at 0.83 with 56px extra label margin so dots/lines end
