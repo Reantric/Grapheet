@@ -39,6 +39,10 @@ public final class DataGrid {
     private static final double EPSILON = 1e-6;
     private static final float LABEL_BAND_GAP = 14f;
     private static final float SLIM_RAIL_PADDING = 16f;
+    /** Only labels at least this faded-in size the slim rail. Faint, transient
+     *  edge labels (e.g. a negative minor tick dipping into view) must not widen
+     *  the rail and shove the whole axis sideways mid-race. */
+    private static final float SLIM_RAIL_LABEL_MIN_ALPHA = 0.6f;
     private static final double[] NICE_STEP_MULTIPLIERS = {1.0, 2.0, 5.0};
 
     private static final float ALPHA_EPSILON = 0.02f;
@@ -110,6 +114,10 @@ public final class DataGrid {
      *  the window), which bumped the whole label column — easing slides it. */
     private float easedSlimRailWidth = -1f;
     private static final float RAIL_EASE_RATE = 7f;
+    /** Widest labels the y-axis will ever show across the whole animation,
+     *  declared by the scene; the rail reserves their width so it never juts
+     *  sideways when the live tick labels change width. */
+    private String[] slimRailReserveLabels;
 
     private double xMin = 0;
     private double xMax = 24;
@@ -339,6 +347,16 @@ public final class DataGrid {
 
     public void setYLabelFormatter(DoubleFunction<String> formatter) {
         this.yLabelFormatter = Objects.requireNonNull(formatter, "formatter");
+    }
+
+    /**
+     * Reserve the y-axis label rail for the widest labels the axis will ever
+     * show, so the plot's left edge holds still instead of jutting sideways
+     * when a live label gains a digit ("8" -> "10") or a line dips to a negative
+     * tick. Pass the worst-case labels (e.g. the formatted global min and max).
+     */
+    public void setYLabelReserve(String... labels) {
+        this.slimRailReserveLabels = labels;
     }
 
     public void showMinorGrid(boolean showMinorGrid) {
@@ -1215,16 +1233,37 @@ public final class DataGrid {
         ensureFont();
         p.textFont(font);
 
+        // A scene that declares a reserve (setYLabelReserve) gets a STABLE rail:
+        // it is pre-sized to the widest label the axis will ever show, faint
+        // transient labels are ignored, and widths are measured at a fixed major
+        // size — so the rail never juts mid-race when a label gains a digit
+        // ("8" -> "10") or a line dips to a negative tick. Scenes that declare no
+        // reserve keep the original adaptive behaviour (count any drawn label at
+        // its live crossfade size), so this change cannot affect them.
+        boolean reserved = slimRailReserveLabels != null;
         float maxLabelWidth = 0f;
+        if (reserved) {
+            p.textSize(majorLabelSize);
+            for (String s : slimRailReserveLabels) {
+                if (s != null) {
+                    maxLabelWidth = Math.max(maxLabelWidth, p.textWidth(s));
+                }
+            }
+        }
         for (Tick tick : yTicks) {
-            if (tick.labelAlpha <= ALPHA_EPSILON) {
+            boolean skip = reserved
+                    ? tick.labelAlpha < SLIM_RAIL_LABEL_MIN_ALPHA
+                    : tick.labelAlpha <= ALPHA_EPSILON;
+            if (skip) {
                 continue;
             }
             float y = domainToCanvasY(tick.value);
             if (y < plotTop - topGridOverscan - 1f || y > plotTop + plotHeight + 1f) {
                 continue;
             }
-            p.textSize(interpolate(minorLabelSize, majorLabelSize, tick.labelAlpha));
+            p.textSize(reserved
+                    ? majorLabelSize
+                    : interpolate(minorLabelSize, majorLabelSize, tick.labelAlpha));
             maxLabelWidth = Math.max(maxLabelWidth, p.textWidth(tick.label));
         }
         return Math.max(minRailWidth, maxLabelWidth + yLabelInset + SLIM_RAIL_PADDING);
