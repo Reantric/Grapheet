@@ -136,7 +136,6 @@ public final class Cs2TopPlayersScene extends Scene {
     private double visibleXSpan = WINDOW_DAYS;
     private double yShownMin = 1.0;
     private double yShownMax = 1.4;
-    private boolean yFitInitialised;
 
     private Track leader;
     private double leaderSinceDay;
@@ -198,7 +197,6 @@ public final class Cs2TopPlayersScene extends Scene {
         visibleXSpan = WINDOW_DAYS;
         yShownMin = 1.0;
         yShownMax = 1.4;
-        yFitInitialised = false;
         leader = null;
         leaderSinceDay = 0;
         zoomOutStarted = false;
@@ -220,7 +218,13 @@ public final class Cs2TopPlayersScene extends Scene {
     @Override
     protected Action build() {
         addUpdater(this::updateTimeline);
-        addNode(Nodes.of(grid::render));
+        // ensureFont() hands the grid its Lato label font; run it before the
+        // grid's first render or frame 1 draws the axis labels in the grid's
+        // own fallback font (Computer Modern) and pops to Lato on frame 2.
+        addNode(Nodes.of(() -> {
+            ensureFont();
+            grid.render();
+        }));
         addNode(Nodes.of(this::drawSeries));
         addNode(this::drawHeadLabels);
         addNode(Nodes.of(this::drawLeaderHeader));
@@ -402,17 +406,12 @@ public final class Cs2TopPlayersScene extends Scene {
         double targetMax = max + span * 0.18;
         double targetMin = targetMax - span;
 
-        if (!yFitInitialised) {
-            // Start grounded: keep the window bottom at the rating-1.0 ground
-            // line so the x axis is visible at first and then visibly falls
-            // away as the camera lifts off with the eased fit.
-            yShownMax = targetMax;
-            yShownMin = Math.min(targetMin, yShownMin);
-            yFitInitialised = true;
-        } else {
-            yShownMin = ease((float) yShownMin, (float) targetMin, dt, Y_FIT_EASE_RATE);
-            yShownMax = ease((float) yShownMax, (float) targetMax, dt, Y_FIT_EASE_RATE);
-        }
+        // Ease toward the fit every frame, including the first frame data
+        // appears. Snapping the window onto the data there (the old behaviour)
+        // lurched the whole chart in a single frame when the default window
+        // started far from the data; easing glides the camera onto the race.
+        yShownMin = ease((float) yShownMin, (float) targetMin, dt, Y_FIT_EASE_RATE);
+        yShownMax = ease((float) yShownMax, (float) targetMax, dt, Y_FIT_EASE_RATE);
         grid.setYRange(yShownMin, yShownMax);
     }
 
