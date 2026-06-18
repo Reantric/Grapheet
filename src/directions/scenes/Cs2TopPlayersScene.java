@@ -278,6 +278,16 @@ public final class Cs2TopPlayersScene extends Scene {
         if (!zoomOutStarted) {
             zoomOutStarted = true;
             zoomOutElapsed = 0;
+            // Final follow step at the handover: the forward phase scrolls the
+            // window left every frame to hold the race head at the follow
+            // fraction. The frame that clamps tDay to endDay advances the head
+            // a few days without that scroll, so freezing the window here would
+            // jut the head right. Apply the scroll the follow would have, so
+            // the head is already at its follow fraction when it gets pinned.
+            double ratio = followRatio();
+            if (endDay > visibleXMin + visibleXSpan * ratio) {
+                visibleXMin = endDay - visibleXSpan * ratio;
+            }
             zoomOutStartXMin = visibleXMin;
             zoomOutStartXSpan = visibleXSpan;
             // Pin the race head to its current screen position: only the
