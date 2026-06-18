@@ -81,7 +81,11 @@ public final class DataGrid {
     private static final float MINOR_GRID_STRENGTH = 0.55f;
     private static final float MINOR_GRID_DENSITY_START = 0.75f;
     private static final float MINOR_GRID_DENSITY_FULL = 1.25f;
-    private static final float MAX_MINOR_SUBDIVISIONS = 4f;
+    // A nested finer family may show as soft minors only if it subdivides the
+    // band into at most this many cells. Compared against the ROUNDED ratio so
+    // inexact family ratios are judged by their true integer subdivision count
+    // (e.g. YEAR/QUARTER = 4.0001 from averageDays, or 0.05/0.01 binary error).
+    private static final int MAX_MINOR_SUBDIVISIONS = 4;
 
     private final Applet p;
     private final DecimalFormat numberFormat = new DecimalFormat("0.##");
@@ -388,7 +392,7 @@ public final class DataGrid {
         ensureFont();
         p.textFont(font);
         p.textSize(majorLabelSize);
-        float yLabelClearancePx = labelClearancePx(axisLabelExtentPx(true), Y_LABEL_GAP_COMFORT);
+        float yLabelClearancePx = labelClearancePx(yLabelExtentPx(), Y_LABEL_GAP_COMFORT);
 
         int count = lastIndex - firstIndex + 1;
         double[] steps = new double[count];
@@ -431,7 +435,7 @@ public final class DataGrid {
         if (minorIndex >= firstIndex && minorIndex <= lastIndex) {
             double minorStep = niceStep(baseStep, minorIndex);
             float subdivisions = (float) (bandStep / minorStep);
-            if (subdivisions <= MAX_MINOR_SUBDIVISIONS + EPSILON) {
+            if (Math.round(subdivisions) <= MAX_MINOR_SUBDIVISIONS) {
                 float minorSpacingPx = (float) (pixelSpan * (minorStep / span));
                 float minorClearancePx = isYAxis
                         ? yLabelClearancePx
@@ -546,7 +550,7 @@ public final class DataGrid {
             if (calendarNesting(bandFamily, families[i]) == Nesting.OLD_WITHIN_NEW) {
                 minorFamily = families[i];
                 float subdivisions = (float) (bandFamily.averageDays / minorFamily.averageDays);
-                if (subdivisions <= MAX_MINOR_SUBDIVISIONS + EPSILON) {
+                if (Math.round(subdivisions) <= MAX_MINOR_SUBDIVISIONS) {
                     float minorSpacingPx = (float) (plotWidth * (minorFamily.averageDays / span));
                     float minorDensity = minorSpacingPx
                             / labelClearancePx(maxCalendarLabelWidth(low, high, minorFamily),
@@ -749,12 +753,9 @@ public final class DataGrid {
         return month + " " + date.getDayOfMonth() + ", " + date.getYear();
     }
 
-    private float axisLabelExtentPx(boolean yAxis) {
-        if (yAxis) {
-            float height = p.textAscent() + p.textDescent();
-            return Math.max(1f, height);
-        }
-        return Math.max(1f, p.textWidth("0"));
+    private float yLabelExtentPx() {
+        float height = p.textAscent() + p.textDescent();
+        return Math.max(1f, height);
     }
 
     private float labelClearancePx(float labelExtentPx, float comfort) {
@@ -1252,7 +1253,7 @@ public final class DataGrid {
         return value;
     }
 
-    /** One merged tick; alphas are the max over every family containing it. */
+    /** One merged tick; alphas accumulate as a capped sum over every family containing it. */
     private static final class Tick {
         private final double value;
         private final String label;
