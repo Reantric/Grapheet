@@ -170,13 +170,20 @@ public final class JtohDifficultyScene extends Scene {
     /** Local-density test used to flag burst cores. */
     private static final int BURST_DENSITY_COUNT = 8;
     private static final double BURST_DENSITY_WINDOW = 7;   // days
-    /** Sim-day ramps before/after the burst for the dive-in / pull-out. */
-    private static final double BURST_LEAD = 30;
-    private static final double BURST_TAIL = 30;
+    /** Sim-day ramps before/after the burst for the dive-in / pull-out. Kept
+     *  short and symmetric so the effect hugs the event instead of ramping in
+     *  from far away. */
+    private static final double BURST_LEAD = 10;
+    private static final double BURST_TAIL = 10;
     /** Peak effect at full intensity: playback this many times slower, and the
      *  x-window squeezed from WINDOW_DAYS down to this many days. */
     private static final double BURST_MAX_SLOW = 25.0;
     private static final double BURST_SPAN = 38;
+    /** Only the first N activity bursts get the bullet-time treatment — for now
+     *  just the first monster; the rest play at normal speed. The peak reaches
+     *  the full BURST_MAX_SLOW only if that first burst is also the densest
+     *  (intensity 1.0); a sparser first burst slows down proportionally less. */
+    private static final int BURST_SLOWMO_LIMIT = 1;
     /** Smallest qualifying burst still gets this fraction of the full effect. */
     private static final double BURST_MIN_INTENSITY = 0.4;
 
@@ -250,6 +257,35 @@ public final class JtohDifficultyScene extends Scene {
         // The follow camera is one-way: once the y-axis has collapsed away it
         // must not reappear during the final zoom-out.
         grid.setRailCollapseRatchet(true);
+
+        // Reserve the y-rail for the widest label the axis will ever show, so the
+        // plot's left edge holds still instead of jutting sideways when a label
+        // gains a digit ("8" -> "10") or a line dips to a negative tick. Mirror
+        // the final-zoom y-fit over the whole history to find the extreme labels.
+        // Assumes the (monospaced) axis font + this difficulty range keep every
+        // tick to <=2 chars, so the formatted fit extremes are a true WIDTH bound
+        // even though the topmost drawn tick (with grid overscan) can be a value
+        // a bit above ceil(fitTop) — same pixel width.
+        double gMin = Double.POSITIVE_INFINITY;
+        double gMax = Double.NEGATIVE_INFINITY;
+        for (Track track : tracks) {
+            for (double d = track.firstDay; d <= track.lastDay; d += Y_FIT_SAMPLE_DAYS) {
+                double v = track.spline.value(d);
+                gMin = Math.min(gMin, v);
+                gMax = Math.max(gMax, v);
+            }
+            double end = track.spline.value(track.lastDay);
+            gMin = Math.min(gMin, end);
+            gMax = Math.max(gMax, end);
+        }
+        if (gMin <= gMax) {
+            double fitSpan = Math.max(Y_MIN_SPAN, (gMax - gMin) / 0.65);
+            double fitTop = gMax + fitSpan * 0.18;
+            double fitBot = fitTop - fitSpan;
+            grid.setYLabelReserve(
+                    String.format(Locale.ENGLISH, "%.0f", Math.ceil(fitTop)),
+                    String.format(Locale.ENGLISH, "%.0f", Math.floor(fitBot)));
+        }
     }
 
     @Override
@@ -351,7 +387,9 @@ public final class JtohDifficultyScene extends Scene {
             return 0;
         }
         double best = 0;
-        for (Burst b : bursts) {
+        int limit = Math.min(bursts.size(), BURST_SLOWMO_LIMIT);
+        for (int k = 0; k < limit; k++) {
+            Burst b = bursts.get(k);
             double ramp;
             if (day < b.startDay - BURST_LEAD || day > b.endDay + BURST_TAIL) {
                 continue;
@@ -1050,7 +1088,9 @@ public final class JtohDifficultyScene extends Scene {
             p.fill(h, s, b, 100f * e.alpha);
             p.text(label, textX + e.xOffset, cy);
             p.textAlign(Applet.RIGHT, Applet.CENTER);
-            p.fill(h, s, b, 70f * e.alpha);
+            p.fill(0, 0, 0, 60f * e.alpha);
+            p.text(val, valX + e.xOffset + 1.5f, cy + 1.5f);
+            p.fill(h, s, b, 100f * e.alpha);
             p.text(val, valX + e.xOffset, cy);
         }
     }
