@@ -24,7 +24,7 @@ Run from repo root:  python3 tools/generate_jtoh_pr_data.py
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import openpyxl
 
@@ -44,9 +44,11 @@ SNOW = ("snow", "#cfe8ff", [
 
 # Gag "line" player: NOT a PR progression. mode=line tells the scene to plot
 # these rows directly as PCHIP knots (no running-max), and they raise no ledger
-# events. Lintahlo drifts from 1 down to -1 across the whole timeline.
+# events. Lintahlo drops from 1 to -1 over ~3 months, then retires so the
+# scene's CS2-style fade removes the label while the dimmed line stays drawn.
+# Knots are (days-after-first-completion, value).
 LINTAHLO = ("Lintahlo", "#9b5de5")
-LINTAHLO_KNOTS = [(0.0, 1.0), (0.25, 0.5), (0.5, 0.0), (0.75, -0.5), (1.0, -1.0)]
+LINTAHLO_KNOTS = [(0, 1.0), (90, -1.0)]
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "src", "data", "jtoh",
                    "completions.csv")
@@ -106,13 +108,12 @@ def main() -> None:
         rows.append((datetime.fromisoformat(ds), sp, scolor, "pr", code, value))
     summary.append((sp, len(scomps), [(c, v) for _, c, v in scomps], None, None))
 
-    # Lintahlo: an explicit declining line spanning the whole real-data range.
+    # Lintahlo: an explicit declining line that retires after ~3 months.
     real_dates = [r[0] for r in rows]
-    dmin, dmax = min(real_dates), max(real_dates)
-    span = dmax - dmin
+    dmin = min(real_dates)
     lp, lcolor = LINTAHLO
-    for frac, value in LINTAHLO_KNOTS:
-        rows.append((dmin + span * frac, lp, lcolor, "line", "-", value))
+    for days_after_start, value in LINTAHLO_KNOTS:
+        rows.append((dmin + timedelta(days=days_after_start), lp, lcolor, "line", "-", value))
 
     rows.sort(key=lambda r: r[0])
     with open(os.path.abspath(OUT), "w", encoding="utf-8") as f:
@@ -126,7 +127,7 @@ def main() -> None:
         print(f"  {player:9s} {n:4d} completions  {span_s}  "
               f"{len(prs)} PR knots, top {prs[-1][1] if prs else '?'}")
     print(f"  Lintahlo  line {LINTAHLO_KNOTS[0][1]:g} -> {LINTAHLO_KNOTS[-1][1]:g}  "
-          f"{dmin.date()} .. {dmax.date()}")
+          f"{dmin.date()} .. {(dmin + timedelta(days=LINTAHLO_KNOTS[-1][0])).date()}")
 
 
 if __name__ == "__main__":

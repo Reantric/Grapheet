@@ -64,6 +64,15 @@ public final class JtohDifficultyScene extends Scene {
     /** 85ms/day over the 2023..mid-2026 dataset lands the video at ~1:35. */
     private static final double DEFAULT_MS_PER_DAY = 85;
     private static final double WINDOW_DAYS = 365;
+    /** Start the timeline this many days before the first completion so the
+     *  opening has room before the first quarter gridline; the race head only
+     *  appears once Amog's first clear lands. */
+    private static final long INTRO_LEAD_DAYS = 21;
+    /** The opening zooms in to this many days (week-scale, so weekly date labels
+     *  are readable), then eases out to WINDOW_DAYS over the expand window. */
+    private static final double INTRO_WINDOW_DAYS = 50;
+    private static final double INTRO_WINDOW_EXPAND_START_DAY = 50;
+    private static final double INTRO_WINDOW_EXPAND_DAYS = 45;
     /** Upper bound for the follow fraction — the actual fraction is derived
      *  every frame from the measured widest label (badge + name + difficulty)
      *  so the whole label block always fits between the head dots and the
@@ -80,6 +89,12 @@ public final class JtohDifficultyScene extends Scene {
     private static final double Y_MIN_SPAN = 4.0;
     private static final double Y_FIT_SAMPLE_DAYS = 5.0;
     private static final float Y_FIT_EASE_RATE = 2.2f;
+    /** JToH uses larger axis labels than the DataGrid default, pushed out a bit
+     *  for legibility; the grid defaults stay untouched for other scenes. */
+    private static final float AXIS_LABEL_MAJOR_SIZE = 40f;
+    private static final float AXIS_LABEL_MINOR_SIZE = 32f;
+    private static final float X_AXIS_LABEL_INSET_PX = 48f;
+    private static final float Y_AXIS_LABEL_INSET_PX = 22f;
     /**
      * Age-weighted y-fit: data this close to "now" gets full framing
      * weight; older extremes decay toward the recent range with the time
@@ -179,11 +194,15 @@ public final class JtohDifficultyScene extends Scene {
      *  x-window squeezed from WINDOW_DAYS down to this many days. */
     private static final double BURST_MAX_SLOW = 25.0;
     private static final double BURST_SPAN = 38;
-    /** Only the first N activity bursts get the bullet-time treatment — for now
-     *  just the first monster; the rest play at normal speed. The peak reaches
-     *  the full BURST_MAX_SLOW only if that first burst is also the densest
-     *  (intensity 1.0); a sparser first burst slows down proportionally less. */
-    private static final int BURST_SLOWMO_LIMIT = 1;
+    /** Bullet-time curation (tuned to the current dataset's burst intensities):
+     *  the densest "marquee" monster (intensity >= FULL_BURST_MIN_INTENSITY) gets
+     *  the full BURST_MAX_SLOW; lesser monsters are dialed down by
+     *  SECONDARY_BURST_SLOW_SCALE so they read as a gentle beat, not a full stop;
+     *  and the smallest (intensity < SECONDARY_BURST_MIN_INTENSITY) are skipped
+     *  entirely to keep the effect sparing. */
+    private static final double FULL_BURST_MIN_INTENSITY = 0.9;
+    private static final double SECONDARY_BURST_MIN_INTENSITY = 0.45;
+    private static final double SECONDARY_BURST_SLOW_SCALE = 0.5;
     /** Smallest qualifying burst still gets this fraction of the full effect. */
     private static final double BURST_MIN_INTENSITY = 0.4;
 
@@ -211,7 +230,7 @@ public final class JtohDifficultyScene extends Scene {
     /** Current bullet-time strength (0..1); drives the slow-mo clock readout. */
     private double currentDrama;
     private double visibleXMin;
-    private double visibleXSpan = WINDOW_DAYS;
+    private double visibleXSpan = INTRO_WINDOW_DAYS;
     private double yShownMin = 1;
     private double yShownMax = 6;
 
@@ -249,11 +268,13 @@ public final class JtohDifficultyScene extends Scene {
         // boundaries; nothing else about the tick/minor-grid density is touched.
         grid.setYMajorStep(Y_BASE_STEP);
         grid.setYLabelFormatter(value -> String.format(Locale.ENGLISH, "%.0f", value));
+        grid.setLabelSizes(AXIS_LABEL_MAJOR_SIZE, AXIS_LABEL_MINOR_SIZE);
+        grid.setLabelInsets(X_AXIS_LABEL_INSET_PX, Y_AXIS_LABEL_INSET_PX);
         grid.setValueBands(tierBands);
         // Tier names off — the axis shows just the difficulty numbers; the band
         // colours carry the tier identity.
         grid.showValueBandLabels(false);
-        grid.setDomain(0, WINDOW_DAYS, yShownMin, yShownMax);
+        grid.setDomain(0, INTRO_WINDOW_DAYS, yShownMin, yShownMax);
         // The follow camera is one-way: once the y-axis has collapsed away it
         // must not reappear during the final zoom-out.
         grid.setRailCollapseRatchet(true);
@@ -293,7 +314,7 @@ public final class JtohDifficultyScene extends Scene {
         tDay = 0;
         sceneSeconds = 0;
         visibleXMin = 0;
-        visibleXSpan = WINDOW_DAYS;
+        visibleXSpan = INTRO_WINDOW_DAYS;
         yShownMin = 1;
         yShownMax = 6;
         leader = null;
@@ -314,7 +335,7 @@ public final class JtohDifficultyScene extends Scene {
             track.lastQueueSwapSeconds = Double.NEGATIVE_INFINITY;
             track.strokeBoost = 0f;
         }
-        grid.setDomain(0, WINDOW_DAYS, yShownMin, yShownMax);
+        grid.setDomain(0, INTRO_WINDOW_DAYS, yShownMin, yShownMax);
         grid.setRailCollapseRatchet(true);
     }
 
@@ -363,7 +384,8 @@ public final class JtohDifficultyScene extends Scene {
             updateFinalZoom(dt);
         } else {
             double ratio = followRatio();
-            visibleXSpan = WINDOW_DAYS - drama * (WINDOW_DAYS - BURST_SPAN);
+            double baseWindow = baseWindowDays(tDay);
+            visibleXSpan = baseWindow - drama * (baseWindow - BURST_SPAN);
             double followStart = visibleXMin + visibleXSpan * ratio;
             if (drama > 0.001) {
                 // Pin the head while zoomed: the span changes both ways, so the
@@ -380,6 +402,15 @@ public final class JtohDifficultyScene extends Scene {
         updateLedger(dt);
     }
 
+    /** Non-bullet-time window width: opens zoomed in at INTRO_WINDOW_DAYS so the
+     *  weekly date labels are readable, then eases out to the full WINDOW_DAYS
+     *  after the opening. */
+    private double baseWindowDays(double day) {
+        double progress = smoothstep(clamp01(
+                (day - INTRO_WINDOW_EXPAND_START_DAY) / INTRO_WINDOW_EXPAND_DAYS));
+        return INTRO_WINDOW_DAYS + (WINDOW_DAYS - INTRO_WINDOW_DAYS) * progress;
+    }
+
     /** Drama envelope at a sim-day: 0 normally, ramping to a burst's intensity
      *  over BURST_LEAD before it and BURST_TAIL after, held at full inside. */
     private double dramaAt(double day) {
@@ -387,9 +418,10 @@ public final class JtohDifficultyScene extends Scene {
             return 0;
         }
         double best = 0;
-        int limit = Math.min(bursts.size(), BURST_SLOWMO_LIMIT);
-        for (int k = 0; k < limit; k++) {
-            Burst b = bursts.get(k);
+        for (Burst b : bursts) {
+            if (b.intensity < SECONDARY_BURST_MIN_INTENSITY) {
+                continue; // smallest monsters get no slow-mo (keep it sparing)
+            }
             double ramp;
             if (day < b.startDay - BURST_LEAD || day > b.endDay + BURST_TAIL) {
                 continue;
@@ -400,7 +432,10 @@ public final class JtohDifficultyScene extends Scene {
             } else {
                 ramp = smoothstep(1.0 - (day - b.endDay) / BURST_TAIL);
             }
-            best = Math.max(best, ramp * b.intensity);
+            // Only the marquee monster gets the full slowdown; lesser monsters
+            // are dialed back so they read as a gentle beat, not a full stop.
+            double scale = b.intensity >= FULL_BURST_MIN_INTENSITY ? 1.0 : SECONDARY_BURST_SLOW_SCALE;
+            best = Math.max(best, ramp * b.intensity * scale);
         }
         return best;
     }
@@ -523,16 +558,22 @@ public final class JtohDifficultyScene extends Scene {
             if (hi <= lo) {
                 continue;
             }
+            // Line-mode tracks (Lintahlo, ending at -1) are framed at FULL weight
+            // while on screen: the age discount must not lift the y-floor above
+            // their value, or their still-drawn line would clamp to the plot
+            // bottom and drag along it. Once they scroll off (hi <= lo) they drop
+            // out naturally and the floor recovers.
+            double trackDiscount = track.lineMode ? 0.0 : (haveRecent ? discountStrength : 0.0);
             for (double endpoint : new double[]{lo, hi}) {
                 double v = ageDiscounted(track.spline.value(endpoint), tDay - endpoint,
-                        recentMin, recentMax, haveRecent ? discountStrength : 0.0);
+                        recentMin, recentMax, trackDiscount);
                 min = Math.min(min, v);
                 max = Math.max(max, v);
             }
             double first = Math.ceil(lo / Y_FIT_SAMPLE_DAYS) * Y_FIT_SAMPLE_DAYS;
             for (double d = first; d <= hi + 1e-9; d += Y_FIT_SAMPLE_DAYS) {
                 double v = ageDiscounted(track.spline.value(d), tDay - d,
-                        recentMin, recentMax, haveRecent ? discountStrength : 0.0);
+                        recentMin, recentMax, trackDiscount);
                 min = Math.min(min, v);
                 max = Math.max(max, v);
             }
@@ -637,7 +678,11 @@ public final class JtohDifficultyScene extends Scene {
         List<Track> visible = new ArrayList<>();
         List<Track> front = new ArrayList<>();
         for (Track track : tracks) {
-            boolean inFront = tDay >= track.firstDay && tDay <= track.lastDay + FRONT_TOLERANCE_DAYS;
+            // Line-mode tracks (Lintahlo) leave the front the instant their data
+            // ends — no front tolerance — so their label fades in place at its
+            // own line end instead of riding the live race-head column rightward.
+            double frontTolerance = track.lineMode ? 0.0 : FRONT_TOLERANCE_DAYS;
+            boolean inFront = tDay >= track.firstDay && tDay <= track.lastDay + frontTolerance;
             float targetAlpha = inFront ? 1f : 0f;
             track.labelAlpha = ease(track.labelAlpha, targetAlpha,
                     dt, targetAlpha > track.labelAlpha ? 4f : 1f / (RETIRE_LABEL_FADE_SECONDS * 0.45f));
@@ -836,6 +881,11 @@ public final class JtohDifficultyScene extends Scene {
      * {@code For N days (~Y.YY years)} underneath.
      */
     private void drawLeaderHeader() {
+        // During the intro lead (before the first clear) there is no leader yet;
+        // skip the header rather than drawing a "?" placeholder.
+        if (leader == null) {
+            return;
+        }
         Applet p = applet();
         ensureFont();
         p.textFont(font);
@@ -844,17 +894,15 @@ public final class JtohDifficultyScene extends Scene {
         float y = -halfViewportHeight() + 24f;
 
         String prefix = "Leader:  ";
-        String rating = leader != null
-                ? String.format(Locale.ENGLISH, "%.2f", leader.spline.value(tDay))
-                : "--";
-        String title = (leader != null ? leader.name : "?") + " (" + rating + ")";
+        String rating = String.format(Locale.ENGLISH, "%.2f", leader.spline.value(tDay));
+        String title = leader.name + " (" + rating + ")";
         int days = (int) Math.max(0, Math.floor(tDay - leaderSinceDay));
         String tenure = "For " + days + (days == 1 ? " day" : " days")
                 + String.format(Locale.ENGLISH, " (~%.2f years)", days / 365.25);
 
         // The avatar slot is always present: the climber's PNG when it
         // exists, the anonymous-silhouette placeholder otherwise.
-        PImage avatar = leader != null ? avatarFor(leader) : null;
+        PImage avatar = avatarFor(leader);
         float avatarSize = 88f;
         float avatarWidth = avatarSize + 20f;
         p.textSize(48);
@@ -1149,11 +1197,11 @@ public final class JtohDifficultyScene extends Scene {
      * tier's threshold (Medium starts at 2, Hard at 3, ...).
      */
     private static List<ValueBand> buildTierBands() {
-        // Outer tiers are open-ended (huge bounds) so their fill always reaches
-        // the plot edge — no black gap above the top line when the y-window
-        // adds headroom, or below the bottom line.
+        // Easy starts at 0 (below 0 stays black, no band). The top "nil" tier is
+        // open-ended so its fill reaches the plot edge when the y-window adds
+        // headroom above the named tiers.
         Object[][] tiers = {
-                {"Easy", "#5b9a4c", -1.0e6, 2.0},
+                {"Easy", "#5b9a4c", 0.0, 2.0},
                 {"Medium", "#ffb000", 2.0, 3.0},
                 {"Hard", "#aa5500", 3.0, 4.0},
                 {"Difficult", "#c4281c", 4.0, 5.0},
@@ -1165,7 +1213,8 @@ public final class JtohDifficultyScene extends Scene {
                 {"Terrifying", "#00ffff", 10.0, 11.0},
                 {"Catastrophic", "#ffffff", 11.0, 12.0},
                 {"Horrific", "#a75e9b", 12.0, 13.0},
-                {"Unreal", "#7b007b", 13.0, 1.0e6},
+                {"Unreal", "#7b007b", 13.0, 14.0},
+                {"nil", "#65666d", 14.0, 1.0e6},
         };
         List<ValueBand> bands = new ArrayList<>();
         for (int i = 0; i < tiers.length; i++) {
@@ -1237,6 +1286,7 @@ public final class JtohDifficultyScene extends Scene {
                 dayZero = when.toLocalDate();
             }
         }
+        dayZero = dayZero.minusDays(INTRO_LEAD_DAYS);
         LocalDateTime base = dayZero.atStartOfDay();
         double[] day = new double[rowWhen.size()];
         double endDay = 0;
@@ -1288,8 +1338,11 @@ public final class JtohDifficultyScene extends Scene {
                     }
                 }
             }
-            // Flatten the tail: hold the final value out to the global end date.
-            if (endDay > lastDay + 1e-6) {
+            // Flatten the tail: PR tracks hold their final value out to the
+            // global end date. Line-mode tracks (e.g. Lintahlo) instead retire
+            // at their last authored knot, so the existing CS2-style fade kicks
+            // in — the label leaves and the line dims but stays drawn.
+            if (!lineMode && endDay > lastDay + 1e-6) {
                 knots.add(new double[]{endDay, lastValue});
             } else if (knots.size() < 2) {
                 knots.add(new double[]{lastDay + 1.0, lastValue});
@@ -1300,7 +1353,7 @@ public final class JtohDifficultyScene extends Scene {
                 kd[j] = knots.get(j)[0];
                 kv[j] = knots.get(j)[1];
             }
-            Track track = new Track(player, Color.fromCss(colorOf.get(player)), kd, kv);
+            Track track = new Track(player, Color.fromCss(colorOf.get(player)), kd, kv, lineMode);
             trackOf.put(player, track);
             tracks.add(track);
         }
@@ -1491,6 +1544,7 @@ public final class JtohDifficultyScene extends Scene {
         private final Pchip spline;
         private final double firstDay;
         private final double lastDay;
+        private final boolean lineMode;
 
         private float labelY;
         private float labelTargetY;
@@ -1504,7 +1558,8 @@ public final class JtohDifficultyScene extends Scene {
         private PImage avatar;
         private boolean avatarChecked;
 
-        private Track(String name, Color color, double[] knotDays, double[] knotValues) {
+        private Track(String name, Color color, double[] knotDays, double[] knotValues,
+                      boolean lineMode) {
             if (knotDays.length < 2) {
                 throw new IllegalStateException("Track " + name + " needs at least two knots");
             }
@@ -1513,6 +1568,7 @@ public final class JtohDifficultyScene extends Scene {
             this.spline = new Pchip(knotDays, knotValues);
             this.firstDay = knotDays[0];
             this.lastDay = knotDays[knotDays.length - 1];
+            this.lineMode = lineMode;
         }
 
         private boolean isActiveAt(double day) {
