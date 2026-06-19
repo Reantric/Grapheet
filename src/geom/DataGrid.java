@@ -146,6 +146,10 @@ public final class DataGrid {
     private float axisStroke = 5f;
     private float majorGridStroke = 2.75f;
     private float minorGridStroke = 1.5f;
+    /** Extra opacity for MINOR gridlines (0 = default). Scales by how minor a line
+     *  is, so majors are untouched — lets a scene with busy coloured backdrops
+     *  (the JToH tier bands) keep its minors legible without restyling every grid. */
+    private float minorGridBoost = 0f;
     private float majorLabelSize = 34f;
     private float minorLabelSize = 27f;
     private float xLabelInset = 40f;
@@ -381,6 +385,12 @@ public final class DataGrid {
 
     public void showMinorGrid(boolean showMinorGrid) {
         this.showMinorGrid = showMinorGrid;
+    }
+
+    /** Extra minor-gridline opacity (0 = default). Useful when busy coloured
+     *  backdrops wash the minors out; majors are left as designed. */
+    public void setMinorGridBoost(float minorGridBoost) {
+        this.minorGridBoost = Math.max(0f, minorGridBoost);
     }
 
     public void showLabels(boolean showLabels) {
@@ -1015,6 +1025,8 @@ public final class DataGrid {
         p.strokeWeight(interpolate(minorGridStroke, majorGridStroke, t));
         float brightness = interpolate(34f, 46f, t);
         float alpha = interpolate(28f, 44f, t) * clamp01(t / 0.3f) * extraFade;
+        // Lift minors (low t) by minorGridBoost; majors (t≈1) stay as designed.
+        alpha *= 1f + (1f - t) * minorGridBoost;
         p.stroke(0, 0, brightness, alpha);
     }
 

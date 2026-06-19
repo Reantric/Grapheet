@@ -14,6 +14,7 @@ import storage.Color;
 import util.Pchip;
 
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,6 +62,11 @@ import java.util.Map;
  */
 public final class JtohDifficultyScene extends Scene {
     private static final String DATA_PATH = "src/data/jtoh/completions.csv";
+    /** During an offline export, each tower-beat's exact video timestamp is
+     *  mirrored here so {@code tools/add_tower_sfx.py} can drop a blip on the
+     *  frame the completion enters the ledger — the render is the single source
+     *  of truth for timing, so the audio can never drift from a tempo edit. */
+    private static final String BEAT_LOG_PATH = "output/JtohDifficultyScene-beats.csv";
     /** 85ms/day over the 2023..mid-2026 dataset lands the video at ~1:35. */
     private static final double DEFAULT_MS_PER_DAY = 85;
     private static final double WINDOW_DAYS = 365;
@@ -205,8 +211,10 @@ public final class JtohDifficultyScene extends Scene {
     /** Reference "full" slowdown: a window at this multiplier drives the deepest
      *  x-zoom + clock; the zoom/clock scale linearly with a window's multiplier. */
     private static final double TEMPO_FULL_SLOW = 25.0;
-    /** Bullet-time x-window: squeezed from the base window down to this at full slow. */
-    private static final double BURST_SPAN = prop("burstSpan", 80.0);
+    /** Bullet-time x-window: squeezed from the base window down to this at full
+     *  slow. Matches INTRO_WINDOW_DAYS so a deep bullet-time shows the same weekly
+     *  date ticks as the opening, not a coarser monthly cadence. */
+    private static final double BURST_SPAN = prop("burstSpan", 50.0);
     /** After this date the camera (y-fit) ignores snow — a low flat late entrant
      *  that otherwise drags the framing down — so the camera tracks the real
      *  race. The final zoom-out frames everyone again; snow's line draws the
@@ -236,6 +244,11 @@ public final class JtohDifficultyScene extends Scene {
     private final List<LedgerEntry> ledger = new ArrayList<>();
     /** Index of the next completion (in {@link #events}) not yet shown. */
     private int eventCursor;
+
+    /** True only for the offline export; gates the {@link #BEAT_LOG_PATH} feed. */
+    private final boolean exporting = SceneContext.configuredExportFps() > 0f;
+    /** Open during an export run; one CSV row per tower-beat as it is revealed. */
+    private PrintWriter beatLog;
 
     private PFont font;
 
@@ -287,6 +300,9 @@ public final class JtohDifficultyScene extends Scene {
         grid.setYLabelFormatter(value -> String.format(Locale.ENGLISH, "%.0f", value));
         grid.setLabelSizes(AXIS_LABEL_MAJOR_SIZE, AXIS_LABEL_MINOR_SIZE);
         grid.setLabelInsets(X_AXIS_LABEL_INSET_PX, Y_AXIS_LABEL_INSET_PX);
+        // Lift the minor gridlines so they stay legible over the coloured tier
+        // bands (they wash out at the shared default).
+        grid.setMinorGridBoost(1.3f);
         grid.setValueBands(tierBands);
         // Tier names off — the axis shows just the difficulty numbers; the band
         // colours carry the tier identity.
@@ -378,8 +394,45 @@ public final class JtohDifficultyScene extends Scene {
         grid.setRailCollapseRatchet(true);
     }
 
+    /** (Re)open the per-beat log for an export run, truncating any prior file.
+     *  Header mirrors {@link #logBeat}. No-op for the windowed/realtime run. */
+    private void openBeatLog() {
+        if (beatLog != null) {
+            beatLog.close();
+            beatLog = null;
+        }
+        if (!exporting) {
+            return;
+        }
+        try {
+            Path path = Path.of(BEAT_LOG_PATH);
+            Files.createDirectories(path.toAbsolutePath().getParent());
+            // autoFlush: every beat is durable the moment it is written, so the
+            // file is complete even if the export is cut short by -DmaxFrames.
+            beatLog = new PrintWriter(Files.newBufferedWriter(path), true);
+            beatLog.println("seconds,day,date,player,code,difficulty");
+            System.out.println("Beat log -> " + path.toAbsolutePath());
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not open beat log " + BEAT_LOG_PATH, e);
+        }
+    }
+
+    /** Record a tower-beat at the current video timestamp ({@link #sceneSeconds}),
+     *  the frame it slides into the ledger. */
+    private void logBeat(Event event) {
+        if (beatLog == null) {
+            return;
+        }
+        LocalDate date = dayZero.plusDays((long) Math.floor(event.day));
+        beatLog.printf(Locale.ROOT, "%.4f,%.3f,%s,%s,%s,%.3f%n",
+                sceneSeconds, event.day, date, event.track.name, event.code, event.difficulty);
+    }
+
     @Override
     protected Action build() {
+        // build() is the one hook that always runs at export startup (onReset
+        // only fires on a Director replay), so the beat log is opened here.
+        openBeatLog();
         addUpdater(this::updateTimeline);
         // ensureFont() hands the grid its Lato label font; run it before the
         // grid's first render or frame 1 draws the axis labels in the grid's
@@ -495,19 +548,21 @@ public final class JtohDifficultyScene extends Scene {
     }
 
     /** One window's eased multiplier at a sim-day: held at {@code peak} across
-     *  [holdStart, holdEnd], easing from/to 1.0 over {@code ramp} days either side
-     *  (smoothstep, so it dives in and lifts out with zero slope at the joins). */
+     *  [holdStart, holdEnd], easing from 1.0 over {@code rampIn} days before and
+     *  back to 1.0 over {@code rampOut} days after (smoothstep, so it dives in and
+     *  lifts out with zero slope at the joins). Separate in/out ramps allow a sharp
+     *  ramp-in to a spike with a long, gentle pull-out afterwards. */
     private static double windowMult(Tempo t, double day) {
-        if (day <= t.holdStart - t.ramp || day >= t.holdEnd + t.ramp) {
+        if (day <= t.holdStart - t.rampIn || day >= t.holdEnd + t.rampOut) {
             return 1.0;
         }
         if (day < t.holdStart) {
-            return 1.0 + (t.peak - 1.0) * smoothstep((day - (t.holdStart - t.ramp)) / t.ramp);
+            return 1.0 + (t.peak - 1.0) * smoothstep((day - (t.holdStart - t.rampIn)) / t.rampIn);
         }
         if (day <= t.holdEnd) {
             return t.peak;
         }
-        return 1.0 + (t.peak - 1.0) * smoothstep(1.0 - (day - t.holdEnd) / t.ramp);
+        return 1.0 + (t.peak - 1.0) * smoothstep(1.0 - (day - t.holdEnd) / t.rampOut);
     }
 
     /**
@@ -524,15 +579,24 @@ public final class JtohDifficultyScene extends Scene {
         // First monster: hold full slow-mo across the Oct 22–Nov 1 flurry, easing
         // out only from Nov 2 — so the deep part lands ON the action, not before it.
         list.add(tempo(LocalDate.of(2024, 10, 18), LocalDate.of(2024, 11, 1), 8, 25.0));
-        // Amog's spring rise — a minor beat.
-        list.add(tempo(LocalDate.of(2025, 3, 15), LocalDate.of(2025, 3, 21), 6, 8.0));
-        // Eggnote + fairylog both rise to 6 — a sustained medium slowdown.
-        list.add(tempo(LocalDate.of(2025, 7, 18), LocalDate.of(2025, 8, 3), 8, 15.0));
+        // Amog's huge Feb 12 spike (beats ToTS at 7.09, his biggest leap): a sharp
+        // ramp-in from Feb 7 to full force AT the spike, then a long, gentle ease-out
+        // through the aftermath to ~Mar 19. rampIn 5d (Feb 7→12), rampOut 32d (Feb
+        // 15→Mar 19).
+        list.add(tempo(LocalDate.of(2025, 2, 12), LocalDate.of(2025, 2, 15), 5, 32, 20.0));
+        // Eggnote + fairylog climb in summer — a gentle beat; not much else happens.
+        list.add(tempo(LocalDate.of(2025, 7, 18), LocalDate.of(2025, 8, 3), 8, 8.0));
         return list;
     }
 
+    /** Symmetric-ramp window (rampIn == rampOut). */
     private Tempo tempo(LocalDate holdStart, LocalDate holdEnd, double ramp, double peak) {
-        return new Tempo(dayOf(holdStart), dayOf(holdEnd), ramp, peak);
+        return tempo(holdStart, holdEnd, ramp, ramp, peak);
+    }
+
+    private Tempo tempo(LocalDate holdStart, LocalDate holdEnd,
+                        double rampIn, double rampOut, double peak) {
+        return new Tempo(dayOf(holdStart), dayOf(holdEnd), rampIn, rampOut, peak);
     }
 
     /** Sim-day index (since dayZero) for a calendar date. */
@@ -541,17 +605,20 @@ public final class JtohDifficultyScene extends Scene {
     }
 
     /** A bullet-time tempo window: a playback multiplier held across [holdStart,
-     *  holdEnd] (sim-days since dayZero), eased in/out over {@code ramp} days. */
+     *  holdEnd] (sim-days since dayZero), eased in over {@code rampIn} days and out
+     *  over {@code rampOut} days. */
     private static final class Tempo {
         private final double holdStart;
         private final double holdEnd;
-        private final double ramp;
+        private final double rampIn;
+        private final double rampOut;
         private final double peak;
 
-        private Tempo(double holdStart, double holdEnd, double ramp, double peak) {
+        private Tempo(double holdStart, double holdEnd, double rampIn, double rampOut, double peak) {
             this.holdStart = holdStart;
             this.holdEnd = holdEnd;
-            this.ramp = ramp;
+            this.rampIn = rampIn;
+            this.rampOut = rampOut;
             this.peak = peak;
         }
     }
@@ -1078,6 +1145,18 @@ public final class JtohDifficultyScene extends Scene {
         int days = (int) Math.max(0, Math.floor(tDay - leaderSinceDay));
         String tenure = "For " + days + (days == 1 ? " day" : " days")
                 + String.format(Locale.ENGLISH, " (~%.2f years)", days / 365.25);
+        // Live count of towers the leader has cleared so far (events are sorted by
+        // day, so stop once we pass "now"). Ticks up as the race plays.
+        int towersBeaten = 0;
+        for (Event e : events) {
+            if (e.day > tDay) {
+                break;
+            }
+            if (e.track == leader) {
+                towersBeaten++;
+            }
+        }
+        String counter = towersBeaten + (towersBeaten == 1 ? " tower cleared" : " towers cleared");
 
         // The avatar slot is always present: the climber's PNG when it
         // exists, the anonymous-silhouette placeholder otherwise.
@@ -1089,12 +1168,14 @@ public final class JtohDifficultyScene extends Scene {
         float titleWidth = p.textWidth(title);
         p.textSize(36);
         float tenureWidth = p.textWidth(tenure);
-        float contentWidth = prefixWidth + avatarWidth + Math.max(titleWidth, tenureWidth);
+        float counterWidth = p.textWidth(counter);
+        float contentWidth = prefixWidth + avatarWidth
+                + Math.max(titleWidth, Math.max(tenureWidth, counterWidth));
 
-        // 2DGP-style translucent backing panel.
+        // 2DGP-style translucent backing panel (extended to fit the counter line).
         p.noStroke();
         p.fill(0, 0, 0, HUD_PANEL_ALPHA);
-        p.rect(x - 18f, y - 12f, x + contentWidth + 18f, y + 106f);
+        p.rect(x - 18f, y - 12f, x + contentWidth + 18f, y + 150f);
 
         p.textAlign(Applet.LEFT, Applet.TOP);
         p.textSize(48);
@@ -1117,6 +1198,11 @@ public final class JtohDifficultyScene extends Scene {
         p.textSize(36);
         p.fill(0, 0, 92, 96);
         p.text(tenure, nameX, y + 58f);
+
+        // Red live tower counter.
+        p.textSize(36);
+        p.fill(0, 82, 100, 100);
+        p.text(counter, nameX, y + 104f);
     }
 
     /**
@@ -1250,9 +1336,11 @@ public final class JtohDifficultyScene extends Scene {
      *  every entry toward its slot; rows past the cap fade out as they go. */
     private void updateLedger(double dt) {
         while (eventCursor < events.size() && events.get(eventCursor).day <= tDay) {
-            LedgerEntry entry = new LedgerEntry(events.get(eventCursor));
+            Event event = events.get(eventCursor);
+            LedgerEntry entry = new LedgerEntry(event);
             entry.xOffset = LEDGER_ENTER_SLIDE; // start off the right edge, slide in
             ledger.add(0, entry);
+            logBeat(event);
             eventCursor++;
         }
         for (int i = 0; i < ledger.size(); i++) {
