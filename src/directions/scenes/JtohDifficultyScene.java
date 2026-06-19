@@ -73,6 +73,10 @@ public final class JtohDifficultyScene extends Scene {
     private static final double INTRO_WINDOW_DAYS = 50;
     private static final double INTRO_WINDOW_EXPAND_START_DAY = 50;
     private static final double INTRO_WINDOW_EXPAND_DAYS = 45;
+    /** The zoomed-in opening runs this many times slower than full speed so the
+     *  first clears land deliberately, then the clock eases back to 1.0 as the
+     *  window expands — see {@link #introRateScale}. */
+    private static final double INTRO_SLOWDOWN = 3.0;
     /** Upper bound for the follow fraction — the actual fraction is derived
      *  every frame from the measured widest label (badge + name + difficulty)
      *  so the whole label block always fits between the head dots and the
@@ -81,8 +85,17 @@ public final class JtohDifficultyScene extends Scene {
     private static final double MAX_FOLLOW_RATIO = 0.83;
     private static final float LABEL_MARGIN_EXTRA_PX = 56f;
     private static final double FINAL_ZOOM_DELAY = 0.6;
-    private static final double FINAL_ZOOM_DURATION = 5.0;
+    /** The end zoom-out is sequenced: first the y-axis eases out to frame every
+     *  (real) player, then a beat, then the x-axis stretches back to day zero. */
+    private static final double FINAL_Y_DURATION = 3.6;
+    private static final double FINAL_ZOOM_PAUSE = 1.0;
+    private static final double FINAL_X_DURATION = 4.0;
     private static final double END_HOLD_SECONDS = 4.0;
+    /** Margins for the final-frame y-range (fraction of the real-player span above,
+     *  flat units below) — keeps the lowest line off the very edge without scaling
+     *  out to empty space. */
+    private static final double FINAL_TOP_HEADROOM = 0.12;
+    private static final double FINAL_BOTTOM_MARGIN = 0.6;
     /** Difficulty tiers are unit-spaced integers, so the natural tick ladder
      *  steps by 1 — the integer gridlines land on the tier boundaries. */
     private static final double Y_BASE_STEP = 1;
@@ -105,6 +118,11 @@ public final class JtohDifficultyScene extends Scene {
      */
     private static final double Y_FIT_RECENT_DAYS = 45;
     private static final double Y_FIT_AGE_DECAY_DAYS = 75;
+    /** During the follow, the framed floor is held no lower than this far under
+     *  the live race's recent minimum, so a high leader over low/late entrants
+     *  (or ignored snow) can't sink the camera into a floored streak. Released
+     *  for the final zoom-out, which frames the whole field. */
+    private static final double FOLLOW_FLOOR_MARGIN = 0.7;
     private static final float LABEL_EASE_RATE = 6f;
     private static final float LABEL_TEXT_SIZE = 38f;
     private static final float LABEL_MIN_GAP_PX = 46f;
@@ -178,43 +196,39 @@ public final class JtohDifficultyScene extends Scene {
     private static final float LEDGER_TEXT_MIN_BRI = 88f;
     private static final float LEDGER_TEXT_MAX_SAT = 82f;
 
-    // ---- Bullet-time: slow + zoom in on bursts of activity ----
-    /** A merged activity window must hold at least this many completions to
-     *  earn the slow-mo treatment — keeps it to the few dramatic spikes. */
-    private static final int BURST_MIN_EVENTS = 20;
-    /** Local-density test used to flag burst cores. */
-    private static final int BURST_DENSITY_COUNT = 8;
-    private static final double BURST_DENSITY_WINDOW = 7;   // days
-    /** Sim-day ramps before/after the burst for the dive-in / pull-out. Kept
-     *  short and symmetric so the effect hugs the event instead of ramping in
-     *  from far away. */
-    private static final double BURST_LEAD = 10;
-    private static final double BURST_TAIL = 10;
-    /** Peak effect at full intensity: playback this many times slower, and the
-     *  x-window squeezed from WINDOW_DAYS down to this many days. */
-    private static final double BURST_MAX_SLOW = 25.0;
-    private static final double BURST_SPAN = 38;
-    /** Bullet-time curation (tuned to the current dataset's burst intensities):
-     *  the densest "marquee" monster (intensity >= FULL_BURST_MIN_INTENSITY) gets
-     *  the full BURST_MAX_SLOW; lesser monsters are dialed down by
-     *  SECONDARY_BURST_SLOW_SCALE so they read as a gentle beat, not a full stop;
-     *  and the smallest (intensity < SECONDARY_BURST_MIN_INTENSITY) are skipped
-     *  entirely to keep the effect sparing. */
-    private static final double FULL_BURST_MIN_INTENSITY = 0.9;
-    private static final double SECONDARY_BURST_MIN_INTENSITY = 0.45;
-    private static final double SECONDARY_BURST_SLOW_SCALE = 0.5;
-    /** Smallest qualifying burst still gets this fraction of the full effect. */
-    private static final double BURST_MIN_INTENSITY = 0.4;
+    // ---- Bullet-time: a hand-authored TEMPO schedule ----
+    // Auto density/jump detection couldn't honour director's notes like "ease out
+    // starting Nov 2" or "medium intensity here", so the slowdowns are now an
+    // explicit list of windows (see buildTempos()). Each window holds a playback
+    // multiplier over a date range with eased ramps: >1 slows (bullet-time, with a
+    // proportional x-zoom + slow-mo clock), <1 fast-forwards through dead air.
+    /** Reference "full" slowdown: a window at this multiplier drives the deepest
+     *  x-zoom + clock; the zoom/clock scale linearly with a window's multiplier. */
+    private static final double TEMPO_FULL_SLOW = 25.0;
+    /** Bullet-time x-window: squeezed from the base window down to this at full slow. */
+    private static final double BURST_SPAN = prop("burstSpan", 80.0);
+    /** After this date the camera (y-fit) ignores snow — a low flat late entrant
+     *  that otherwise drags the framing down — so the camera tracks the real
+     *  race. The final zoom-out frames everyone again; snow's line draws the
+     *  whole time regardless. */
+    private static final LocalDate SNOW_IGNORE_DATE = LocalDate.of(2025, 7, 31);
 
     private final DataGrid grid;
     private final List<ValueBand> tierBands = buildTierBands();
     private final List<Track> tracks;
     /** Every completion, sorted by day — drives the ledger feed. */
     private final List<Event> events;
-    /** Precomputed activity spikes that get the slow-mo + zoom treatment. */
-    private final List<Burst> bursts;
+    /** Hand-authored bullet-time tempo windows (slowdowns + fast-forwards). */
+    private final List<Tempo> tempos;
     private final LocalDate dayZero;
     private final double endDay;
+    /** Day (since dayZero) at/after which the camera ignores snow — see SNOW_IGNORE_DATE. */
+    private final double snowIgnoreDay;
+    /** Y-range the final zoom-out frames: every real (non-line-mode) player plus
+     *  margins, computed once. The gag line is excluded so the axis doesn't scale
+     *  down to its -1. */
+    private final double finalYMin;
+    private final double finalYMax;
     private final double msPerDay;
 
     /** Ledger entries, newest at index 0; those past {@link #LEDGER_MAX_ROWS}
@@ -243,6 +257,8 @@ public final class JtohDifficultyScene extends Scene {
     private double zoomOutElapsed;
     private double zoomOutStartXMin;
     private double zoomOutStartXSpan;
+    private double zoomOutStartYMin;
+    private double zoomOutStartYMax;
     private double zoomOutHeadFraction = MAX_FOLLOW_RATIO;
     private double endHoldElapsed;
     /** Pixels needed right of the head dots for the widest label block,
@@ -255,9 +271,10 @@ public final class JtohDifficultyScene extends Scene {
         Loaded data = loadData(DATA_PATH);
         tracks = data.tracks;
         events = data.events;
-        bursts = data.bursts;
         dayZero = data.dayZero;
         endDay = data.endDay;
+        snowIgnoreDay = SNOW_IGNORE_DATE.toEpochDay() - dayZero.toEpochDay();
+        tempos = buildTempos();
 
         grid = new DataGrid(applet());
         grid.setXCalendarAxis(dayZero);
@@ -307,6 +324,28 @@ public final class JtohDifficultyScene extends Scene {
                     String.format(Locale.ENGLISH, "%.0f", Math.ceil(fitTop)),
                     String.format(Locale.ENGLISH, "%.0f", Math.floor(fitBot)));
         }
+
+        // Final-frame y-range over the REAL players only (skip the line-mode gag),
+        // so the end zoom-out settles on snow..Amog with a little margin instead of
+        // scaling the axis down to Lintahlo's -1.
+        double rMin = Double.POSITIVE_INFINITY;
+        double rMax = Double.NEGATIVE_INFINITY;
+        for (Track track : tracks) {
+            if (track.lineMode) {
+                continue;
+            }
+            for (double d = track.firstDay; d <= track.lastDay; d += Y_FIT_SAMPLE_DAYS) {
+                double v = track.spline.value(d);
+                rMin = Math.min(rMin, v);
+                rMax = Math.max(rMax, v);
+            }
+        }
+        if (rMin > rMax) {
+            rMin = 0;
+            rMax = Y_MIN_SPAN;
+        }
+        finalYMin = rMin - FINAL_BOTTOM_MARGIN;
+        finalYMax = rMax + (rMax - rMin) * FINAL_TOP_HEADROOM;
     }
 
     @Override
@@ -360,7 +399,8 @@ public final class JtohDifficultyScene extends Scene {
 
     private boolean isFinished() {
         return zoomOutStarted
-                && zoomOutElapsed >= FINAL_ZOOM_DELAY + FINAL_ZOOM_DURATION
+                && zoomOutElapsed >= FINAL_ZOOM_DELAY + FINAL_Y_DURATION
+                        + FINAL_ZOOM_PAUSE + FINAL_X_DURATION
                 && endHoldElapsed >= END_HOLD_SECONDS;
     }
 
@@ -373,11 +413,16 @@ public final class JtohDifficultyScene extends Scene {
         sceneSeconds += dt;
         grid.setLabelFadeTimeStep(dt);
 
-        // Bullet-time: near an activity burst, advance the sim slower and
-        // squeeze the x-window so the flurry is readable; ease back after.
-        double drama = dramaAt(tDay);
+        // Hand-authored tempo: a playback multiplier for this sim-day (>1 slow,
+        // <1 fast-forward). drama (0..1) is the slowdown depth, driving the x-zoom
+        // squeeze + slow-mo clock; speed-ups (tempo<1) give drama 0 (no zoom).
+        double tempo = zoomOutStarted ? 1.0 : tempoAt(tDay);
+        double drama = clamp01((tempo - 1.0) / (TEMPO_FULL_SLOW - 1.0));
         currentDrama = drama;
-        double rateScale = 1.0 + drama * (BURST_MAX_SLOW - 1.0);
+        // Tempo and the intro slowdown compose multiplicatively: through the
+        // zoomed-in opening the clock runs slow and eases back as the window
+        // expands; after that the tempo schedule takes over.
+        double rateScale = tempo * introRateScale(tDay);
         tDay = Math.min(endDay, tDay + dt * 1000.0 / (msPerDay * rateScale));
 
         if (tDay >= endDay) {
@@ -406,38 +451,109 @@ public final class JtohDifficultyScene extends Scene {
      *  weekly date labels are readable, then eases out to the full WINDOW_DAYS
      *  after the opening. */
     private double baseWindowDays(double day) {
-        double progress = smoothstep(clamp01(
-                (day - INTRO_WINDOW_EXPAND_START_DAY) / INTRO_WINDOW_EXPAND_DAYS));
-        return INTRO_WINDOW_DAYS + (WINDOW_DAYS - INTRO_WINDOW_DAYS) * progress;
+        double t = clamp01((day - INTRO_WINDOW_EXPAND_START_DAY) / INTRO_WINDOW_EXPAND_DAYS);
+        // Smoothstep expands with zero slope at both ends, so the window neither
+        // jerks into motion nor snaps to a halt — that is the "seamless" part.
+        // The opening no longer feels rushed because the sim clock
+        // (introRateScale) now carries the slow-to-fast pacing, not this curve.
+        return INTRO_WINDOW_DAYS + (WINDOW_DAYS - INTRO_WINDOW_DAYS) * smoothstep(t);
     }
 
-    /** Drama envelope at a sim-day: 0 normally, ramping to a burst's intensity
-     *  over BURST_LEAD before it and BURST_TAIL after, held at full inside. */
-    private double dramaAt(double day) {
+    /** Sim-clock multiplier for the opening, a smooth trapezoid in sim-day:
+     *  <ul>
+     *    <li>[0, lead): the empty pre-race lead-in eases from full speed into the
+     *        slow opening, so the bare establishing shot doesn't drag;</li>
+     *    <li>[lead, expandStart): the zoomed-in, week-tick race opening holds at
+     *        {@link #INTRO_SLOWDOWN}x so the first clears land deliberately;</li>
+     *    <li>[expandStart, expandEnd): eases back to full speed exactly as the
+     *        window expands, so the scene accelerates seamlessly into the cruise.</li>
+     *  </ul>
+     *  Story pace (sim-days per second) therefore ramps slow→fast across the
+     *  zoom-out, with zero-slope joins at each segment so there is no hitch. */
+    private double introRateScale(double day) {
         if (zoomOutStarted) {
-            return 0;
+            return 1.0;
         }
-        double best = 0;
-        for (Burst b : bursts) {
-            if (b.intensity < SECONDARY_BURST_MIN_INTENSITY) {
-                continue; // smallest monsters get no slow-mo (keep it sparing)
-            }
-            double ramp;
-            if (day < b.startDay - BURST_LEAD || day > b.endDay + BURST_TAIL) {
-                continue;
-            } else if (day < b.startDay) {
-                ramp = smoothstep((day - (b.startDay - BURST_LEAD)) / BURST_LEAD);
-            } else if (day <= b.endDay) {
-                ramp = 1.0;
-            } else {
-                ramp = smoothstep(1.0 - (day - b.endDay) / BURST_TAIL);
-            }
-            // Only the marquee monster gets the full slowdown; lesser monsters
-            // are dialed back so they read as a gentle beat, not a full stop.
-            double scale = b.intensity >= FULL_BURST_MIN_INTENSITY ? 1.0 : SECONDARY_BURST_SLOW_SCALE;
-            best = Math.max(best, ramp * b.intensity * scale);
+        if (day < INTRO_LEAD_DAYS) {
+            return 1.0 + (INTRO_SLOWDOWN - 1.0) * smoothstep(clamp01(day / INTRO_LEAD_DAYS));
         }
-        return best;
+        if (day < INTRO_WINDOW_EXPAND_START_DAY) {
+            return INTRO_SLOWDOWN;
+        }
+        double t = clamp01((day - INTRO_WINDOW_EXPAND_START_DAY) / INTRO_WINDOW_EXPAND_DAYS);
+        return 1.0 + (INTRO_SLOWDOWN - 1.0) * (1.0 - smoothstep(t));
+    }
+
+    /** Playback-rate multiplier for a sim-day: the product of every tempo
+     *  window's contribution (1.0 outside any window). >1 slows, <1 fast-forwards. */
+    private double tempoAt(double day) {
+        double mult = 1.0;
+        for (Tempo t : tempos) {
+            mult *= windowMult(t, day);
+        }
+        return mult;
+    }
+
+    /** One window's eased multiplier at a sim-day: held at {@code peak} across
+     *  [holdStart, holdEnd], easing from/to 1.0 over {@code ramp} days either side
+     *  (smoothstep, so it dives in and lifts out with zero slope at the joins). */
+    private static double windowMult(Tempo t, double day) {
+        if (day <= t.holdStart - t.ramp || day >= t.holdEnd + t.ramp) {
+            return 1.0;
+        }
+        if (day < t.holdStart) {
+            return 1.0 + (t.peak - 1.0) * smoothstep((day - (t.holdStart - t.ramp)) / t.ramp);
+        }
+        if (day <= t.holdEnd) {
+            return t.peak;
+        }
+        return 1.0 + (t.peak - 1.0) * smoothstep(1.0 - (day - t.holdEnd) / t.ramp);
+    }
+
+    /**
+     * Hand-authored bullet-time schedule (director's cut). Each window holds a
+     * playback multiplier over a date range with eased ramps in/out — &gt;1 slows
+     * (bullet-time, with a proportional x-zoom + slow-mo clock), &lt;1 fast-forwards
+     * through dead air. Edit the dates and intensities here to retime the cut; the
+     * opening (intro pacing) and the final zoom-out are handled separately.
+     */
+    private List<Tempo> buildTempos() {
+        List<Tempo> list = new ArrayList<>();
+        // Fast-forward the dead stretch — Amog establishing alone, nothing else moves.
+        list.add(tempo(LocalDate.of(2023, 9, 1), LocalDate.of(2024, 9, 20), 10, 0.55));
+        // First monster: hold full slow-mo across the Oct 22–Nov 1 flurry, easing
+        // out only from Nov 2 — so the deep part lands ON the action, not before it.
+        list.add(tempo(LocalDate.of(2024, 10, 18), LocalDate.of(2024, 11, 1), 8, 25.0));
+        // Amog's spring rise — a minor beat.
+        list.add(tempo(LocalDate.of(2025, 3, 15), LocalDate.of(2025, 3, 21), 6, 8.0));
+        // Eggnote + fairylog both rise to 6 — a sustained medium slowdown.
+        list.add(tempo(LocalDate.of(2025, 7, 18), LocalDate.of(2025, 8, 3), 8, 15.0));
+        return list;
+    }
+
+    private Tempo tempo(LocalDate holdStart, LocalDate holdEnd, double ramp, double peak) {
+        return new Tempo(dayOf(holdStart), dayOf(holdEnd), ramp, peak);
+    }
+
+    /** Sim-day index (since dayZero) for a calendar date. */
+    private double dayOf(LocalDate date) {
+        return date.toEpochDay() - dayZero.toEpochDay();
+    }
+
+    /** A bullet-time tempo window: a playback multiplier held across [holdStart,
+     *  holdEnd] (sim-days since dayZero), eased in/out over {@code ramp} days. */
+    private static final class Tempo {
+        private final double holdStart;
+        private final double holdEnd;
+        private final double ramp;
+        private final double peak;
+
+        private Tempo(double holdStart, double holdEnd, double ramp, double peak) {
+            this.holdStart = holdStart;
+            this.holdEnd = holdEnd;
+            this.ramp = ramp;
+            this.peak = peak;
+        }
     }
 
     /**
@@ -470,6 +586,8 @@ public final class JtohDifficultyScene extends Scene {
             }
             zoomOutStartXMin = visibleXMin;
             zoomOutStartXSpan = visibleXSpan;
+            zoomOutStartYMin = yShownMin;
+            zoomOutStartYMax = yShownMax;
             // Pin the race head to its current screen position: only the
             // history behind it compresses as the window stretches back to
             // day zero, so the dots and labels never move horizontally.
@@ -477,7 +595,11 @@ public final class JtohDifficultyScene extends Scene {
             zoomOutHeadFraction = Math.max(0.5, Math.min(0.95, zoomOutHeadFraction));
         }
         zoomOutElapsed += dt;
-        double progress = clamp01((zoomOutElapsed - FINAL_ZOOM_DELAY) / FINAL_ZOOM_DURATION);
+        // The x-axis stretch waits for the y-axis to ease out (updateYFit eases to
+        // finalYMin/Max) plus a held beat, so the camera first reveals everyone
+        // vertically, pauses, THEN pulls back through the whole timeline.
+        double xStart = FINAL_ZOOM_DELAY + FINAL_Y_DURATION + FINAL_ZOOM_PAUSE;
+        double progress = clamp01((zoomOutElapsed - xStart) / FINAL_X_DURATION);
         double eased = smoothstep(progress);
         visibleXMin = interpolate(zoomOutStartXMin, 0, eased);
         visibleXSpan = (endDay - visibleXMin) / zoomOutHeadFraction;
@@ -512,7 +634,31 @@ public final class JtohDifficultyScene extends Scene {
         }
     }
 
+    /** Snow is ignored by the camera between SNOW_IGNORE_DATE and the final
+     *  zoom-out, so the y-fit lifts off its low flat line and tracks the real
+     *  race. Snow still draws — it just no longer drags the framing down. */
+    private boolean ignoredByCamera(Track track) {
+        return !zoomOutStarted && tDay >= snowIgnoreDay && "snow".equals(track.name);
+    }
+
     private void updateYFit(double dt) {
+        // Final zoom-out: ease to the precomputed range that frames every REAL
+        // player (Lintahlo, the gag line that dips to -1, is excluded — we pretend
+        // it isn't there, so the y-axis settles on snow..Amog instead of scaling
+        // all the way down). Easing here is the y-out phase; the x stretch waits
+        // for it (see updateFinalZoom). Holding a fixed target also stops the
+        // y-axis re-expanding as the widening x-window pulls in old low history.
+        if (zoomOutStarted) {
+            // Deliberate, timed y-out (smoothstep over FINAL_Y_DURATION) rather
+            // than an exponential ease, so its pace is set directly by that knob.
+            double yProg = smoothstep(clamp01(
+                    (zoomOutElapsed - FINAL_ZOOM_DELAY) / FINAL_Y_DURATION));
+            yShownMin = interpolate(zoomOutStartYMin, finalYMin, yProg);
+            yShownMax = interpolate(zoomOutStartYMax, finalYMax, yProg);
+            grid.setYRange(yShownMin, yShownMax);
+            return;
+        }
+
         double xLo = visibleXMin;
         double xHi = visibleXMin + visibleXSpan;
 
@@ -521,6 +667,9 @@ public final class JtohDifficultyScene extends Scene {
         double recentMax = Double.NEGATIVE_INFINITY;
         double recentCutoff = tDay - Y_FIT_RECENT_DAYS;
         for (Track track : tracks) {
+            if (ignoredByCamera(track)) {
+                continue;
+            }
             double lo = Math.max(Math.max(track.firstDay, xLo), recentCutoff);
             double hi = Math.min(Math.min(tDay, track.lastDay), xHi);
             if (hi <= lo) {
@@ -536,13 +685,9 @@ public final class JtohDifficultyScene extends Scene {
             recentMax = Math.max(recentMax, hiv);
         }
 
-        // The age discount releases old extremes during the follow, but the
-        // final zoom-out must frame the whole history again.
+        // The age discount releases old extremes during the follow; the final
+        // zoom-out is handled by the early return above, so it is always full here.
         double discountStrength = 1.0;
-        if (zoomOutStarted) {
-            discountStrength = 1.0 - smoothstep(clamp01(
-                    (zoomOutElapsed - FINAL_ZOOM_DELAY) / FINAL_ZOOM_DURATION));
-        }
 
         // Pass 2: all visible data, with extremes older than the recent
         // window decayed toward the recent range by age. Samples sit on an
@@ -553,17 +698,22 @@ public final class JtohDifficultyScene extends Scene {
         double min = haveRecent ? recentMin : Double.POSITIVE_INFINITY;
         double max = haveRecent ? recentMax : Double.NEGATIVE_INFINITY;
         for (Track track : tracks) {
+            if (ignoredByCamera(track)) {
+                continue;
+            }
             double lo = Math.max(track.firstDay, xLo);
             double hi = Math.min(Math.min(tDay, track.lastDay), xHi);
             if (hi <= lo) {
                 continue;
             }
-            // Line-mode tracks (Lintahlo, ending at -1) are framed at FULL weight
-            // while on screen: the age discount must not lift the y-floor above
-            // their value, or their still-drawn line would clamp to the plot
-            // bottom and drag along it. Once they scroll off (hi <= lo) they drop
-            // out naturally and the floor recovers.
-            double trackDiscount = track.lineMode ? 0.0 : (haveRecent ? discountStrength : 0.0);
+            // Every track is age-discounted, line-mode gag included. A long-retired
+            // line (Lintahlo, ending at -1) must NOT keep holding the framing open
+            // to its old extreme: it used to get full weight here so it wouldn't
+            // clamp flat to the plot bottom, but now that the series is CLIPPED to
+            // the plot (not clamped) it simply slides off the bottom instead. The
+            // age discount then releases its -1 gradually, so the camera no longer
+            // snaps upward the day the line finally scrolls off the left edge.
+            double trackDiscount = haveRecent ? discountStrength : 0.0;
             for (double endpoint : new double[]{lo, hi}) {
                 double v = ageDiscounted(track.spline.value(endpoint), tDay - endpoint,
                         recentMin, recentMax, trackDiscount);
@@ -588,6 +738,21 @@ public final class JtohDifficultyScene extends Scene {
         double targetMax = max + span * 0.18;
         double targetMin = targetMax - span;
 
+        // Hold the floor near the live race's lower edge during the follow.
+        // The fill-factor padding above sinks targetMin well below the data, so
+        // when the spread is wide (a high leader over still-climbing chasers) the
+        // low climbers — and snow once ignored — get crammed into a floored streak
+        // at the very bottom. Bounding the floor to just under recentMin (which
+        // already excludes ignored snow) lifts the camera onto the real race and
+        // lets the older/lower history slide off the bottom (clipped, not floored).
+        // The min() keeps at least Y_MIN_SPAN, so a tightly-clustered field (or the
+        // early Amog-only stretch) is untouched. (The final zoom-out never reaches
+        // here — it eases to the precomputed real-player range above.)
+        if (haveRecent) {
+            double liftedMin = Math.max(targetMin, recentMin - FOLLOW_FLOOR_MARGIN);
+            targetMin = Math.min(liftedMin, targetMax - Y_MIN_SPAN);
+        }
+
         // Ease toward the fit every frame, including the first frame data
         // appears. Snapping the window onto the data there (the old behaviour)
         // lurched the whole band stack in a single frame, because the default
@@ -607,14 +772,21 @@ public final class JtohDifficultyScene extends Scene {
         double xLo = grid.getXMin();
         double xHi = grid.getXMax();
         double stepDays = Math.max(0.4, (xHi - xLo) / Math.max(1f, grid.getPlotWidth()) * 2.0);
-        // Lines may exit through the TOP of the frame (an age-discounted
-        // historical spike arcs out as the camera re-frames the present) —
-        // clamp far above the viewport, not at the plot edge, or the spike
-        // flattens into a plateau. Soft floor below: lines may dip a little
-        // past the plot (and below the grounded Easy floor) instead of
-        // visibly flattening against the boundary.
-        float plotTop = grid.getPlotTop() - 400f;
-        float plotBottom = grid.getPlotTop() + grid.getPlotHeight() + 30f;
+        // Clip the series to the plot rect so a line leaving the frame exits
+        // cleanly at the edge instead of being clamped flat along it: a climber's
+        // low early history — and snow's flat line once the camera lifts off it
+        // past SNOW_IGNORE_DATE — slides off the BOTTOM rather than riding it as a
+        // floored streak, while an aged-out spike leaves through the TOP at its
+        // true angle instead of flattening into a plateau. The loose y-bounds
+        // only keep canvas coordinates finite for values far outside the window;
+        // the clip does the actual edge cut.
+        float plotLeft = grid.getPlotLeft();
+        float plotTop = grid.getPlotTop();
+        float plotW = grid.getPlotWidth();
+        float plotH = grid.getPlotHeight();
+        float yLoBound = plotTop - 2000f;
+        float yHiBound = plotTop + plotH + 2000f;
+        p.clip(plotLeft, plotTop, plotW, plotH);
 
         for (Track track : tracks) {
             double headDay = Math.min(tDay, track.lastDay);
@@ -639,24 +811,25 @@ public final class JtohDifficultyScene extends Scene {
             // sharp PR risers re-approximated differently each frame — the
             // "history changing" shimmer.
             p.vertex(grid.domainToCanvasX(lo),
-                    clamp(grid.domainToCanvasY(track.spline.value(lo)), plotTop, plotBottom));
+                    clamp(grid.domainToCanvasY(track.spline.value(lo)), yLoBound, yHiBound));
             for (double d = Math.ceil(lo / stepDays) * stepDays; d < hi; d += stepDays) {
                 p.vertex(grid.domainToCanvasX(d),
-                        clamp(grid.domainToCanvasY(track.spline.value(d)), plotTop, plotBottom));
+                        clamp(grid.domainToCanvasY(track.spline.value(d)), yLoBound, yHiBound));
             }
             p.vertex(grid.domainToCanvasX(hi),
-                    clamp(grid.domainToCanvasY(track.spline.value(hi)), plotTop, plotBottom));
+                    clamp(grid.domainToCanvasY(track.spline.value(hi)), yLoBound, yHiBound));
             p.endShape();
 
             if (headDay >= xLo && headDay <= xHi && tDay >= track.firstDay) {
                 float hx = grid.domainToCanvasX(headDay);
-                float hy = clamp(grid.domainToCanvasY(track.spline.value(headDay)), plotTop, plotBottom);
+                float hy = clamp(grid.domainToCanvasY(track.spline.value(headDay)), yLoBound, yHiBound);
                 // Reference style: plain white head dot.
                 p.noStroke();
                 p.fill(0, 0, 100, lineAlpha);
                 p.circle(hx, hy, HEAD_DOT_PX + 3f * track.strokeBoost);
             }
         }
+        p.noClip();
     }
 
     private void drawHeadLabels(SceneContext ctx) {
@@ -683,15 +856,21 @@ public final class JtohDifficultyScene extends Scene {
             // own line end instead of riding the live race-head column rightward.
             double frontTolerance = track.lineMode ? 0.0 : FRONT_TOLERANCE_DAYS;
             boolean inFront = tDay >= track.firstDay && tDay <= track.lastDay + frontTolerance;
-            float targetAlpha = inFront ? 1f : 0f;
+            // Drop the label once its head dot sinks past the bottom horizon
+            // (value below the framed floor — the line is clipped there too), so a
+            // track the camera has climbed above — snow, once ignored — leaves no
+            // orphaned label pinned to the edge. It fades back in if the head
+            // re-enters the frame (e.g. the final zoom-out drops the floor).
+            double headDay = Math.min(tDay, track.lastDay);
+            float trueHeadY = grid.domainToCanvasY(track.spline.value(headDay));
+            boolean belowHorizon = trueHeadY > plotBottom;
+            float targetAlpha = (inFront && !belowHorizon) ? 1f : 0f;
             track.labelAlpha = ease(track.labelAlpha, targetAlpha,
                     dt, targetAlpha > track.labelAlpha ? 4f : 1f / (RETIRE_LABEL_FADE_SECONDS * 0.45f));
-            double headDay = Math.min(tDay, track.lastDay);
             if (track.labelAlpha <= 0.02f || headDay < grid.getXMin() || tDay < track.firstDay) {
                 continue;
             }
-            track.labelTargetY = clamp(grid.domainToCanvasY(track.spline.value(headDay)),
-                    plotTop + 26f, plotBottom - 22f);
+            track.labelTargetY = clamp(trueHeadY, plotTop + 26f, plotBottom - 22f);
             track.labelDotY = track.labelTargetY; // live head-dot Y, before stacking
             track.labelHeadX = grid.domainToCanvasX(Math.min(headDay, grid.getXMax()));
             visible.add(track);
@@ -1011,14 +1190,17 @@ public final class JtohDifficultyScene extends Scene {
         // Slow-mo clock: time-of-day, fading in only while bullet-time is
         // active, so the viewer feels the sim crawl through the hours.
         // Time text only after the box is fully open (drama > 0.12), so it
-        // never spills past the panel edge.
+        // never spills past the panel edge. The alpha ramps from 0 at the
+        // gate to full by drama ~0.18 (a short, ~0.06-wide fade): enough to
+        // avoid a hard pop, but reaching solid in nearly every slow-mo so
+        // the readout doesn't sit half-lit through milder flurries.
         if (currentDrama > 0.12) {
             double frac = shownDay - Math.floor(shownDay);
             int totalMin = (int) Math.round(frac * 24 * 60) % (24 * 60);
             String timeText = String.format(Locale.ENGLISH, "%02d:%02d", totalMin / 60, totalMin % 60);
             p.textAlign(Applet.CENTER, Applet.TOP);
             p.textSize(40);
-            p.fill(0, 0, 100, 96f * clamp01F(((float) currentDrama - 0.12f) * 5f));
+            p.fill(0, 0, 100, 96f * clamp01F(((float) currentDrama - 0.12f) * 16f));
             p.text(timeText, headingCenter, topY + 110f);
         }
     }
@@ -1031,10 +1213,10 @@ public final class JtohDifficultyScene extends Scene {
     private PImage avatarFor(Track track) {
         if (!track.avatarChecked) {
             track.avatarChecked = true;
-            java.nio.file.Path path = java.nio.file.Path.of("src/data/jtoh/avatars", track.name + ".png");
+            java.nio.file.Path path = java.nio.file.Path.of("src/data/jtoh/avatars",
+                    track.name.toLowerCase(Locale.ROOT) + ".png");
             if (!Files.exists(path)) {
-                path = java.nio.file.Path.of("src/data/jtoh/avatars",
-                        track.name.toLowerCase(Locale.ROOT) + ".png");
+                path = java.nio.file.Path.of("src/data/jtoh/avatars", track.name + ".png");
             }
             if (Files.exists(path)) {
                 track.avatar = applet().loadImage(path.toString());
@@ -1368,54 +1550,7 @@ public final class JtohDifficultyScene extends Scene {
         }
         events.sort(Comparator.comparingDouble(e -> e.day));
 
-        return new Loaded(tracks, events, computeBursts(events), dayZero, endDay);
-    }
-
-    /** Find the dramatic activity spikes: flag dense cores, merge them into
-     *  windows (bridging short gaps), keep the ones above a count threshold,
-     *  and scale each window's intensity by how many completions it holds. */
-    private static List<Burst> computeBursts(List<Event> events) {
-        int n = events.size();
-        List<Burst> bursts = new ArrayList<>();
-        if (n == 0) {
-            return bursts;
-        }
-        double half = BURST_DENSITY_WINDOW / 2.0;
-        boolean[] dense = new boolean[n];
-        for (int i = 0; i < n; i++) {
-            int count = 0;
-            for (int j = 0; j < n; j++) {
-                if (Math.abs(events.get(j).day - events.get(i).day) <= half) {
-                    count++;
-                }
-            }
-            dense[i] = count >= BURST_DENSITY_COUNT;
-        }
-        List<double[]> raw = new ArrayList<>(); // {startDay, endDay, count}
-        double maxCount = BURST_MIN_EVENTS;
-        int i = 0;
-        while (i < n) {
-            if (!dense[i]) {
-                i++;
-                continue;
-            }
-            int j = i;
-            while (j + 1 < n && (dense[j + 1] || events.get(j + 1).day - events.get(j).day < 5.0)) {
-                j++;
-            }
-            int count = j - i + 1;
-            raw.add(new double[]{events.get(i).day, events.get(j).day, count});
-            maxCount = Math.max(maxCount, count);
-            i = j + 1;
-        }
-        for (double[] r : raw) {
-            if (r[2] < BURST_MIN_EVENTS) {
-                continue;
-            }
-            double t = clamp01((r[2] - BURST_MIN_EVENTS) / Math.max(1.0, maxCount - BURST_MIN_EVENTS));
-            bursts.add(new Burst(r[0], r[1], BURST_MIN_INTENSITY + t * (1.0 - BURST_MIN_INTENSITY)));
-        }
-        return bursts;
+        return new Loaded(tracks, events, dayZero, endDay);
     }
 
     private static double readMsPerDay() {
@@ -1428,6 +1563,20 @@ public final class JtohDifficultyScene extends Scene {
             throw new IllegalArgumentException("msPerDay must be positive: " + raw);
         }
         return parsed;
+    }
+
+    /** A -D{key} double override, or {@code def} if unset/blank/unparseable.
+     *  Lets the bullet-time knobs be tuned per-render without recompiling. */
+    private static double prop(String key, double def) {
+        String raw = System.getProperty(key, "").trim();
+        if (raw.isEmpty()) {
+            return def;
+        }
+        try {
+            return Double.parseDouble(raw);
+        } catch (NumberFormatException e) {
+            return def;
+        }
     }
 
     /** Decay a sample's framing influence toward the recent range by age. */
@@ -1482,30 +1631,15 @@ public final class JtohDifficultyScene extends Scene {
     private static final class Loaded {
         private final List<Track> tracks;
         private final List<Event> events;
-        private final List<Burst> bursts;
         private final LocalDate dayZero;
         private final double endDay;
 
-        private Loaded(List<Track> tracks, List<Event> events, List<Burst> bursts,
+        private Loaded(List<Track> tracks, List<Event> events,
                        LocalDate dayZero, double endDay) {
             this.tracks = tracks;
             this.events = events;
-            this.bursts = bursts;
             this.dayZero = dayZero;
             this.endDay = endDay;
-        }
-    }
-
-    /** A precomputed activity spike that earns the slow-mo + zoom treatment. */
-    private static final class Burst {
-        private final double startDay;
-        private final double endDay;
-        private final double intensity; // BURST_MIN_INTENSITY .. 1.0
-
-        private Burst(double startDay, double endDay, double intensity) {
-            this.startDay = startDay;
-            this.endDay = endDay;
-            this.intensity = intensity;
         }
     }
 
