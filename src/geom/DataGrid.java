@@ -322,6 +322,16 @@ public final class DataGrid {
         this.font = Objects.requireNonNull(labelFont, "labelFont");
     }
 
+    /** Override the default axis label sizes (major = full-strength labels,
+     *  minor = the faded next-family labels mid-crossfade). */
+    public void setLabelSizes(float majorLabelSize, float minorLabelSize) {
+        if (majorLabelSize <= 0f || minorLabelSize <= 0f) {
+            throw new IllegalArgumentException("Label sizes must be positive");
+        }
+        this.majorLabelSize = majorLabelSize;
+        this.minorLabelSize = minorLabelSize;
+    }
+
     /**
      * Animation time step for the label crossfades, in seconds. Scenes on a
      * fixed-timestep clock should pass their dt every frame so fades stay
@@ -339,6 +349,16 @@ public final class DataGrid {
         this.topInset = topInset;
         this.rightInset = rightInset;
         this.bottomInset = bottomInset;
+    }
+
+    /** Gap from the plot edge to the axis labels (x = below the plot, y = left
+     *  of it). Larger values push the numbers further out from the gridlines. */
+    public void setLabelInsets(float xLabelInset, float yLabelInset) {
+        if (xLabelInset < 0f || yLabelInset < 0f) {
+            throw new IllegalArgumentException("Label insets must be non-negative");
+        }
+        this.xLabelInset = xLabelInset;
+        this.yLabelInset = yLabelInset;
     }
 
     public void setXLabelFormatter(DoubleFunction<String> formatter) {
@@ -833,10 +853,15 @@ public final class DataGrid {
         return state[0];
     }
 
-    // Full reference-style date labels: "Dec 1, 2013", "Mar 1, 2014", ...
+    // Reference-style date labels. The year shows ONLY on month-boundary dates
+    // (the 1st), so a tick's text is identical whether it is drawn as a week tick
+    // or a month tick — it never flips ("Oct 1, 2024" <-> "Oct 1") when the band
+    // crosses the week/month zoom boundary. Pure week ticks (8th/15th/22nd) stay
+    // bare and simply fade in and out by alpha.
     private static String calendarLabel(LocalDate date) {
-        String month = date.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
-        return month + " " + date.getDayOfMonth() + ", " + date.getYear();
+        String dayLabel = date.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH)
+                + " " + date.getDayOfMonth();
+        return date.getDayOfMonth() == 1 ? dayLabel + ", " + date.getYear() : dayLabel;
     }
 
     private float axisLabelExtentPx(boolean yAxis) {
@@ -868,6 +893,7 @@ public final class DataGrid {
 
     private float maxCalendarLabelWidth(double low, double high, CalendarFamily family) {
         float maxWidth = 1f;
+        boolean subMonth = family.averageDays < CalendarFamily.MONTH.averageDays;
         LocalDate date = family.firstBoundaryOnOrAfter(
                 xCalendarDayZero.plusDays((long) Math.floor(low)));
         while (true) {
@@ -875,7 +901,12 @@ public final class DataGrid {
             if (day > high + EPSILON) {
                 break;
             }
-            maxWidth = Math.max(maxWidth, p.textWidth(calendarLabel(date)));
+            // Sub-month families: skip the wide month-boundary label (it carries
+            // the year); the typical bare week/day label sets the cadence and the
+            // rare month boundary has a full cell of room around it.
+            if (!(subMonth && date.getDayOfMonth() == 1)) {
+                maxWidth = Math.max(maxWidth, p.textWidth(calendarLabel(date)));
+            }
             date = family.next(date);
         }
         return maxWidth;
