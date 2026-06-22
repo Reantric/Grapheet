@@ -80,3 +80,18 @@ Video export example:
 Recording uses the in-repo ffmpeg pipe recorder and requires `ffmpeg` to be available on `PATH`.
 If needed, pass `-DffmpegPath=/absolute/path/to/ffmpeg`.
 You can also override the output path with `-DvideoPath=/absolute/path/to/file.mp4`.
+
+## CS2 top-players race
+
+`Cs2TopPlayersScene` animates the top CS2 players by 3-month rolling HLTV rating
+(calendar x-axis, auto-fitting y-axis, leader header, smooth label flips;
+optional avatars via `src/data/cs2/avatars/<player>.png`):
+
+```sh
+./gradlew runCs2TopPlayersScene                  # full-speed (100 ms per simulated day)
+./gradlew runCs2TopPlayersScene -DmsPerDay=40    # quick preview
+```
+
+Data lives in `src/data/cs2/top_players_rolling.csv`. Regenerate the bundled
+mock data with `python3 tools/generate_cs2_mock_data.py`, or swap in real HLTV
+data with `tools/scrape_hltv.py` (same CSV schema; needs a residential IP).
