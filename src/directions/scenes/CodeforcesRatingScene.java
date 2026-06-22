@@ -7,6 +7,7 @@ import directions.engine.Nodes;
 import directions.engine.Scene;
 import directions.engine.SceneContext;
 import geom.DataGrid;
+import geom.ValueBand;
 import processing.core.PFont;
 import processing.core.PImage;
 import storage.Color;
@@ -27,24 +28,25 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Animated race chart of the top CS2 players by 3-month rolling HLTV rating.
+ * Animated race chart of competitive-programmer ratings over time, with the
+ * Codeforces rank-tier colour bands (Newbie .. Legendary Grandmaster) painted
+ * behind the lines. Structurally identical to the CS2 top-players race; only
+ * the data, y-axis scale and the tier bands differ.
  *
- * <p>Data comes from {@code src/data/cs2/top_players_rolling.csv}
- * (player,team,color,date,rating — weekly rolling-average knots produced by
- * {@code tools/generate_cs2_mock_data.py} or {@code tools/scrape_hltv.py}).
- * Knots are PCHIP-interpolated, so lines stay smooth and overshoot-free at
- * any playback speed.
+ * <p>Data comes from {@code src/data/codeforces/top_coders_rolling.csv}
+ * (player,country,color,date,rating — knots produced by
+ * {@code tools/generate_codeforces_mock_data.py}). Knots are
+ * PCHIP-interpolated, so lines stay smooth and overshoot-free at any playback
+ * speed.
  *
  * <p>Timeline: one simulated day per {@code -DmsPerDay} milliseconds
  * (default {@value #DEFAULT_MS_PER_DAY}). The camera follows the head of the
  * race through a one-year window, then eases out to the full date range at
- * the end with the race head pinned in place. Top left shows a
- * reference-style leader header, top right the simulated date. Optional
- * avatar thumbnails are picked up from
- * {@code src/data/cs2/avatars/<player>.png}.
+ * the end with the race head pinned in place. Top left shows the leader
+ * header, top right the simulated date.
  */
-public final class Cs2TopPlayersScene extends Scene {
-    private static final String DATA_PATH = "src/data/cs2/top_players_rolling.csv";
+public final class CodeforcesRatingScene extends Scene {
+    private static final String DATA_PATH = "src/data/codeforces/top_coders_rolling.csv";
     private static final String TEAM_LOGO_DIR = "src/data/cs2/team_logos";
     /** 85ms/day over the 2017..mid-2026 dataset lands the video at ~5:00. */
     private static final double DEFAULT_MS_PER_DAY = 85;
@@ -59,8 +61,8 @@ public final class Cs2TopPlayersScene extends Scene {
     private static final double FINAL_ZOOM_DELAY = 0.6;
     private static final double FINAL_ZOOM_DURATION = 5.0;
     private static final double END_HOLD_SECONDS = 4.0;
-    private static final double Y_BASE_STEP = 0.05;
-    private static final double Y_MIN_SPAN = 0.18;
+    private static final double Y_BASE_STEP = 100;
+    private static final double Y_MIN_SPAN = 950;
     private static final double Y_FIT_SAMPLE_DAYS = 5.0;
     private static final float Y_FIT_EASE_RATE = 2.2f;
     /**
@@ -134,8 +136,8 @@ public final class Cs2TopPlayersScene extends Scene {
     private double sceneSeconds;
     private double visibleXMin;
     private double visibleXSpan = WINDOW_DAYS;
-    private double yShownMin = 1.0;
-    private double yShownMax = 1.4;
+    private double yShownMin = 1400;
+    private double yShownMax = 2400;
 
     private Track leader;
     private double leaderSinceDay;
@@ -154,13 +156,13 @@ public final class Cs2TopPlayersScene extends Scene {
      *  measured in drawHeadLabels and smoothed. */
     private float followMarginPx = 320f;
 
-    public Cs2TopPlayersScene(Applet p) {
+    public CodeforcesRatingScene(Applet p) {
         super(p);
         msPerDay = readMsPerDay();
         tracks = loadTracks(DATA_PATH);
         if (tracks.isEmpty()) {
             throw new IllegalStateException(
-                    "No player data in " + DATA_PATH + " — run tools/generate_cs2_mock_data.py first");
+                    "No coder data in " + DATA_PATH + " — run tools/generate_codeforces_mock_data.py first");
         }
         dayZero = tracks.stream()
                 .map(track -> track.firstDate)
@@ -175,14 +177,14 @@ public final class Cs2TopPlayersScene extends Scene {
 
         grid = new DataGrid(applet());
         grid.setXCalendarAxis(dayZero);
-        grid.setAnchor(0, 1.0);
+        grid.setAnchor(0, 0);
         grid.setYMajorStep(Y_BASE_STEP);
-        // Adaptive precision: 2dp like HLTV, but half-step ticks (1.125)
-        // must not round to a wrong-looking "1.13" if they ever fade in.
-        grid.setYLabelFormatter(value -> {
-            boolean needsThree = Math.abs(value * 100 - Math.round(value * 100)) > 1e-6;
-            return String.format(Locale.ENGLISH, needsThree ? "%.3f" : "%.2f", value);
-        });
+        grid.setYLabelFormatter(value -> String.format(Locale.ENGLISH, "%.0f", value));
+        grid.setValueBands(buildTierBands());
+        // Pin the y axis to the rank thresholds — just the numbers, no tier
+        // names; the band colours carry the tier identity.
+        grid.setYExplicitTicks(new double[]{1400, 1600, 1900, 2100, 2300, 2400, 2600, 3000});
+        grid.showValueBandLabels(false);
         grid.setDomain(0, WINDOW_DAYS, yShownMin, yShownMax);
         // The follow camera is one-way: once the y-axis has collapsed away it
         // must not reappear during the final zoom-out.
@@ -195,8 +197,8 @@ public final class Cs2TopPlayersScene extends Scene {
         sceneSeconds = 0;
         visibleXMin = 0;
         visibleXSpan = WINDOW_DAYS;
-        yShownMin = 1.0;
-        yShownMax = 1.4;
+        yShownMin = 1400;
+        yShownMax = 2400;
         leader = null;
         leaderSinceDay = 0;
         zoomOutStarted = false;
@@ -673,7 +675,7 @@ public final class Cs2TopPlayersScene extends Scene {
 
     /** Reference style: {@code Name (1.31)} in the line color. */
     private String headLabelText(Track track) {
-        return track.name + " (" + String.format(Locale.ENGLISH, "%.2f", ratingNow(track)) + ")";
+        return track.name + " (" + String.format(Locale.ENGLISH, "%.0f", ratingNow(track)) + ")";
     }
 
     /** Current rating; frozen at the final knot once the track has retired. */
@@ -751,7 +753,7 @@ public final class Cs2TopPlayersScene extends Scene {
 
         String prefix = "Leader:  ";
         String rating = leader != null
-                ? String.format(Locale.ENGLISH, "%.2f", leader.spline.value(tDay))
+                ? String.format(Locale.ENGLISH, "%.0f", leader.spline.value(tDay))
                 : "--";
         String title = (leader != null ? leader.name : "?") + " (" + rating + ")";
         int days = (int) Math.max(0, Math.floor(tDay - leaderSinceDay));
@@ -936,14 +938,50 @@ public final class Cs2TopPlayersScene extends Scene {
     // Data loading
     // ------------------------------------------------------------------
 
+    /** The Codeforces rank tiers, as dark backdrop tints + brighter edges. */
+    private static List<ValueBand> buildTierBands() {
+        // Outer tiers are open-ended (huge bounds) so their fill always reaches
+        // the plot edge — no black gap above the top line when the y-window
+        // adds headroom, or below the bottom line.
+        Object[][] tiers = {
+                {"Newbie", "#808080", -1.0e6, 1200.0},
+                {"Pupil", "#008000", 1200.0, 1400.0},
+                {"Specialist", "#03a89e", 1400.0, 1600.0},
+                {"Expert", "#0000ff", 1600.0, 1900.0},
+                {"Candidate Master", "#aa00aa", 1900.0, 2100.0},
+                {"Master", "#ff8c00", 2100.0, 2300.0},
+                {"International Master", "#ff8c00", 2300.0, 2400.0},
+                {"Grandmaster", "#ff0000", 2400.0, 2600.0},
+                {"International Grandmaster", "#ff0000", 2600.0, 3000.0},
+                {"Legendary Grandmaster", "#ff0000", 3000.0, 1.0e6},
+        };
+        List<ValueBand> bands = new ArrayList<>();
+        for (int i = 0; i < tiers.length; i++) {
+            String label = (String) tiers[i][0];
+            Color base = Color.fromCss((String) tiers[i][1]);
+            double lo = (Double) tiers[i][2];
+            double hi = (Double) tiers[i][3];
+            float h = base.getHue().getValue();
+            float s = base.getSaturation().getValue();
+            float b = base.getBrightness().getValue();
+            // Gentle brightness ramp up the stack keeps same-hue tiers (the
+            // three reds) visually distinct without shouting.
+            float fillBri = Math.min(54f, 30f + i * 2.4f);
+            Color fill = new Color(h, s * 0.9f, fillBri, 42f);
+            Color edge = new Color(h, s, Math.min(100f, b + 36f), 58f);
+            bands.add(new ValueBand(lo, hi, fill, edge, label));
+        }
+        return bands;
+    }
+
     private static List<Track> loadTracks(String path) {
         List<String> lines;
         try {
             lines = Files.readAllLines(Path.of(path));
         } catch (IOException e) {
             throw new UncheckedIOException(
-                    "Could not read " + path + " — run tools/generate_cs2_mock_data.py "
-                            + "(or tools/scrape_hltv.py) from the repo root first", e);
+                    "Could not read " + path + " — run tools/generate_codeforces_mock_data.py "
+                            + "from the repo root first", e);
         }
 
         Map<String, TrackBuilder> builders = new LinkedHashMap<>();

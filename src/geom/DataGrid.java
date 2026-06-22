@@ -114,6 +114,11 @@ public final class DataGrid {
     private double xMajorStep = 3;
     private double yMajorStep = 100;
 
+    /** When non-null, the y axis shows exactly these values (sorted) instead of
+     *  the adaptive 1/2/5 ladder — for fixed semantic ticks (e.g. rank
+     *  thresholds) that do not follow a nice-number cadence. */
+    private double[] yExplicitTicks;
+
     /** When non-null, x values are interpreted as days since this date. */
     private LocalDate xCalendarDayZero;
 
@@ -136,6 +141,10 @@ public final class DataGrid {
     private boolean showMinorGrid = true;
     private boolean showLabels = true;
     private boolean showAxisBackgroundStrips = true;
+    /** Coloured value-range strata painted behind the grid (e.g. rank tiers). */
+    private List<ValueBand> valueBands = List.of();
+    private boolean showValueBandLabels = true;
+    private float valueBandLabelSize = 22f;
     private boolean railCollapseRatchet;
     private float reachedCollapseProgress;
 
@@ -170,8 +179,10 @@ public final class DataGrid {
             return;
         }
 
-        List<Tick> yTicks = buildNumericTicks(yMin, yMax, yAnchor, yMajorStep, plotHeight,
-                topGridOverscan, yLabelFormatter, yLabelFadeStates, yGridFadeStates);
+        List<Tick> yTicks = yExplicitTicks != null
+                ? buildExplicitTicks(yExplicitTicks, yLabelFormatter)
+                : buildNumericTicks(yMin, yMax, yAnchor, yMajorStep, plotHeight,
+                        topGridOverscan, yLabelFormatter, yLabelFadeStates, yGridFadeStates);
 
         currentCollapseProgress = railCollapseProgress();
         float currentLeftRailWidth = interpolate(leftInset, slimRailWidth(yTicks), currentCollapseProgress);
@@ -186,6 +197,8 @@ public final class DataGrid {
                 : buildNumericTicks(xMin, xMax, xAnchor, xMajorStep, plotWidth,
                         rightGridOverscan, xLabelFormatter, xLabelFadeStates, xGridFadeStates);
 
+        // Value bands are the quietest layer: behind gridlines, axes and data.
+        drawValueBands();
         drawVerticalGrid(xTicks);
         drawHorizontalGrid(yTicks);
         // The bottom band sits under the axes, but the left rail band draws
@@ -243,6 +256,16 @@ public final class DataGrid {
 
     public void setYMajorStep(double yMajorStep) {
         this.yMajorStep = requirePositive(yMajorStep, "yMajorStep");
+    }
+
+    /**
+     * Pins the y axis to a fixed set of tick values (labelled by the y label
+     * formatter) instead of the adaptive ladder. Each becomes a full-strength
+     * major tick; edge fades as the window pans still apply. Pass {@code null}
+     * to restore the automatic ladder.
+     */
+    public void setYExplicitTicks(double[] yExplicitTicks) {
+        this.yExplicitTicks = yExplicitTicks == null ? null : yExplicitTicks.clone();
     }
 
     /**
@@ -316,6 +339,23 @@ public final class DataGrid {
         this.showAxisBackgroundStrips = showAxisBackgroundStrips;
     }
 
+    /**
+     * Sets the coloured value-range strata drawn behind the grid. Bands are
+     * keyed to data-space y values, so they ride the y-axis as it pans/zooms.
+     * Pass an empty list (or {@code null}) to clear.
+     */
+    public void setValueBands(List<ValueBand> bands) {
+        this.valueBands = bands == null ? List.of() : List.copyOf(bands);
+    }
+
+    public void showValueBandLabels(boolean showValueBandLabels) {
+        this.showValueBandLabels = showValueBandLabels;
+    }
+
+    public void setValueBandLabelSize(float valueBandLabelSize) {
+        this.valueBandLabelSize = valueBandLabelSize;
+    }
+
     // ------------------------------------------------------------------
     // Geometry helpers for scene code
     // ------------------------------------------------------------------
@@ -365,6 +405,20 @@ public final class DataGrid {
     // ------------------------------------------------------------------
     // Tick construction
     // ------------------------------------------------------------------
+
+    /** Fixed major-tick list from explicit values (see {@link #setYExplicitTicks}). */
+    private List<Tick> buildExplicitTicks(double[] values, DoubleFunction<String> formatter) {
+        double[] sorted = values.clone();
+        java.util.Arrays.sort(sorted);
+        List<Tick> ticks = new ArrayList<>(sorted.length);
+        for (double value : sorted) {
+            Tick tick = new Tick(value, formatter.apply(value));
+            tick.gridAlpha = 1f;
+            tick.labelAlpha = 1f;
+            ticks.add(tick);
+        }
+        return ticks;
+    }
 
     private List<Tick> buildNumericTicks(
             double min,
@@ -896,6 +950,81 @@ public final class DataGrid {
         float brightness = interpolate(34f, 46f, t);
         float alpha = interpolate(28f, 44f, t) * clamp01(t / 0.3f) * extraFade;
         p.stroke(0, 0, brightness, alpha);
+    }
+
+    /**
+     * Paints the coloured value-range strata behind everything else. Bands are
+     * clamped to the plot rect and use {@link #domainToCanvasY} so they track
+     * the y-axis as it pans and zooms. Drawn in three passes (fills, then
+     * threshold lines, then tier labels) so edges and text sit over the tints.
+     */
+    private void drawValueBands() {
+        if (valueBands.isEmpty()) {
+            return;
+        }
+        float bandLeft = plotLeft;
+        float bandRight = plotLeft + plotWidth + rightGridOverscan;
+        float plotBottom = plotTop + plotHeight;
+        // Fills run to the top canvas edge so the colour reaches behind the
+        // header HUD instead of leaving a black margin above the top tier.
+        // (Threshold lines and tier labels below stay clamped to the plot.)
+        float fillTop = -p.height / 2f;
+
+        // 1) Region fills — the quiet, dark tints (rectMode is CORNERS).
+        p.noStroke();
+        for (ValueBand band : valueBands) {
+            float top = Math.max(domainToCanvasY(band.hi()), fillTop);
+            float bottom = Math.min(domainToCanvasY(band.lo()), plotBottom);
+            if (bottom - top <= 0.5f) {
+                continue;
+            }
+            Color f = band.fill();
+            p.fill(f.getHue().getValue(), f.getSaturation().getValue(),
+                    f.getBrightness().getValue(), f.getAlpha().getValue());
+            p.rect(bandLeft, top, bandRight, bottom);
+        }
+
+        // 2) Threshold lines at each band's lower boundary (the semantic value).
+        p.noFill();
+        for (ValueBand band : valueBands) {
+            float y = domainToCanvasY(band.lo());
+            if (y < plotTop || y > plotBottom) {
+                continue;
+            }
+            Color e = band.edge();
+            p.strokeWeight(majorGridStroke);
+            p.stroke(e.getHue().getValue(), e.getSaturation().getValue(),
+                    e.getBrightness().getValue(), e.getAlpha().getValue());
+            p.line(bandLeft, y, bandRight, y);
+        }
+
+        // 3) Tier labels — faint, near the left edge, centred in the band.
+        if (showValueBandLabels) {
+            ensureFont();
+            p.textFont(font);
+            p.textAlign(Applet.LEFT, Applet.CENTER);
+            p.textSize(valueBandLabelSize);
+            p.noStroke();
+            float labelX = plotLeft + 18f;
+            for (ValueBand band : valueBands) {
+                String label = band.label();
+                if (label == null || label.isEmpty()) {
+                    continue;
+                }
+                float top = Math.max(domainToCanvasY(band.hi()), plotTop);
+                float bottom = Math.min(domainToCanvasY(band.lo()), plotBottom);
+                if (bottom - top < valueBandLabelSize + 8f) {
+                    continue;
+                }
+                float ly = (top + bottom) / 2f;
+                Color e = band.edge();
+                p.fill(0, 0, 0, 55f);
+                p.text(label, labelX + 1.5f, ly + 1.5f);
+                p.fill(e.getHue().getValue(), e.getSaturation().getValue(),
+                        e.getBrightness().getValue(), 70f);
+                p.text(label, labelX, ly);
+            }
+        }
     }
 
     private void drawAxes() {
