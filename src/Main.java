@@ -214,9 +214,9 @@ public class Main extends Applet {
             return sanitizePathSegment(simpleName);
         }
 
-        String sceneName = System.getProperty("scene", "TaylorsScene").trim();
+        String sceneName = System.getProperty("scene", "JtohDifficultyScene").trim();
         if (sceneName.isEmpty()) {
-            return "TaylorsScene";
+            return "JtohDifficultyScene";
         }
         return sanitizePathSegment(sceneName);
     }
