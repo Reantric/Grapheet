@@ -374,3 +374,15 @@ This file is the handoff context for future Codex sessions. Read it before start
     removed). P2D
     measured SLOWER than JAVA2D for export on M1 Pro (sync glReadPixels +
     60fps animator pin); use JAVA2D here, test P2D on a discrete-GPU box.
+
+## Deferred ideas (JToH calendar labels)
+- **Crossfade the year suffix (option B for the month/week label transition).**
+  Currently (option A, shipped) the year shows only on month-boundary dates
+  ("Oct 1, 2024") and bare days/weeks never carry it, so a tick's text never
+  changes across the week<->month band crossfade. The fancier alternative, if we
+  ever want it perfectly smooth: render the label in two parts — the base
+  ("Oct 1") at the tick's own alpha, and the ", YYYY" suffix at the MONTH band's
+  (fading) alpha — so the year visibly fades in/out during the zoom transition
+  instead of being present-or-absent. Needs DataGrid to draw calendar labels in
+  two segments with independent alphas (the Tick model currently holds one label
+  string). Revisit only if the month-boundary-only year ever looks off.

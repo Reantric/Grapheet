@@ -1,0 +1,1800 @@
+package directions.scenes;
+
+import core.Applet;
+import directions.engine.Action;
+import directions.engine.Actions;
+import directions.engine.Nodes;
+import directions.engine.Scene;
+import directions.engine.SceneContext;
+import geom.DataGrid;
+import geom.ValueBand;
+import processing.core.PFont;
+import processing.core.PImage;
+import storage.Color;
+import util.Pchip;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * Animated race chart of three real JToH (Juke's Towers of Hell) players over
+ * time, with the difficulty-tier colour bands (Easy .. Extreme, ratings 1..9)
+ * painted behind the lines.
+ *
+ * <p>Each line is a player's <em>personal-record</em> progression: the running
+ * maximum of the difficulty they have cleared, so the line only ever climbs.
+ * The PR knots are PCHIP-interpolated (smooth, overshoot-free) and the tail is
+ * held flat out to the global end date. A player's hardest tower can exceed the
+ * top tier (Extreme = 9); the open-ended Extreme band absorbs anything above 9.
+ *
+ * <p>Data comes from {@code src/data/jtoh/completions.csv}
+ * (player,color,datetime,code,difficulty — one row per tower completion,
+ * produced by {@code tools/generate_jtoh_pr_data.py} from the three workbooks).
+ * Every completion also feeds the right-column LEDGER: a feed of
+ * "{@code Username beat <code>}" rows tinted by the tower's difficulty tier,
+ * newest on top, that pushes the oldest rows off the bottom as new ones land.
+ * The race head and its labels are kept left of the ledger gutter.
+ *
+ * <p>Unlike the Codeforces scene, the difficulty tiers are evenly spaced
+ * integers, so the y-axis uses the natural 1/2/5 tick ladder (a major step of
+ * 1, exactly like the CS2 race) instead of pinned semantic ticks — the integer
+ * gridlines fall on the tier boundaries. The bands show only the difficulty
+ * numbers on the axis; the colours carry the tier identity.
+ *
+ * <p>Timeline: one simulated day per {@code -DmsPerDay} milliseconds
+ * (default {@value #DEFAULT_MS_PER_DAY}). The camera follows the head of the
+ * race through a one-year window, then eases out to the full date range at
+ * the end with the race head pinned in place. Top left shows the leader
+ * header, top right the simulated date.
+ */
+public final class JtohDifficultyScene extends Scene {
+    private static final String DATA_PATH = "src/data/jtoh/completions.csv";
+    /** During an offline export, each tower-beat's exact video timestamp is
+     *  mirrored here so {@code tools/add_tower_sfx.py} can drop a blip on the
+     *  frame the completion enters the ledger — the render is the single source
+     *  of truth for timing, so the audio can never drift from a tempo edit. */
+    private static final String BEAT_LOG_PATH = "output/JtohDifficultyScene-beats.csv";
+    /** 85ms/day over the 2023..mid-2026 dataset lands the video at ~1:35. */
+    private static final double DEFAULT_MS_PER_DAY = 85;
+    private static final double WINDOW_DAYS = 365;
+    /** Start the timeline this many days before the first completion so the
+     *  opening has room before the first quarter gridline; the race head only
+     *  appears once Amog's first clear lands. */
+    private static final long INTRO_LEAD_DAYS = 21;
+    /** The opening zooms in to this many days (week-scale, so weekly date labels
+     *  are readable), then eases out to WINDOW_DAYS over the expand window. */
+    private static final double INTRO_WINDOW_DAYS = 50;
+    private static final double INTRO_WINDOW_EXPAND_START_DAY = 50;
+    private static final double INTRO_WINDOW_EXPAND_DAYS = 45;
+    /** The zoomed-in opening runs this many times slower than full speed so the
+     *  first clears land deliberately, then the clock eases back to 1.0 as the
+     *  window expands — see {@link #introRateScale}. */
+    private static final double INTRO_SLOWDOWN = 3.0;
+    /** Upper bound for the follow fraction — the actual fraction is derived
+     *  every frame from the measured widest label (badge + name + difficulty)
+     *  so the whole label block always fits between the head dots and the
+     *  viewport edge; a fixed fraction left the column clamped onto the
+     *  line tails whenever a long name entered the race. */
+    private static final double MAX_FOLLOW_RATIO = 0.83;
+    private static final float LABEL_MARGIN_EXTRA_PX = 56f;
+    private static final double FINAL_ZOOM_DELAY = 0.6;
+    /** The end zoom-out is sequenced: first the y-axis eases out to frame every
+     *  (real) player, then a beat, then the x-axis stretches back to day zero. */
+    private static final double FINAL_Y_DURATION = 3.6;
+    private static final double FINAL_ZOOM_PAUSE = 1.0;
+    private static final double FINAL_X_DURATION = 4.0;
+    private static final double END_HOLD_SECONDS = 4.0;
+    /** Margins for the final-frame y-range (fraction of the real-player span above,
+     *  flat units below) — keeps the lowest line off the very edge without scaling
+     *  out to empty space. */
+    private static final double FINAL_TOP_HEADROOM = 0.12;
+    private static final double FINAL_BOTTOM_MARGIN = 0.6;
+    /** Difficulty tiers are unit-spaced integers, so the natural tick ladder
+     *  steps by 1 — the integer gridlines land on the tier boundaries. */
+    private static final double Y_BASE_STEP = 1;
+    private static final double Y_MIN_SPAN = 4.0;
+    private static final double Y_FIT_SAMPLE_DAYS = 5.0;
+    private static final float Y_FIT_EASE_RATE = 2.2f;
+    /** JToH uses larger axis labels than the DataGrid default, pushed out a bit
+     *  for legibility; the grid defaults stay untouched for other scenes. */
+    private static final float AXIS_LABEL_MAJOR_SIZE = 40f;
+    private static final float AXIS_LABEL_MINOR_SIZE = 32f;
+    private static final float X_AXIS_LABEL_INSET_PX = 48f;
+    private static final float Y_AXIS_LABEL_INSET_PX = 22f;
+    /**
+     * Age-weighted y-fit: data this close to "now" gets full framing
+     * weight; older extremes decay toward the recent range with the time
+     * constant below, so the camera follows the CURRENT race instead of
+     * holding the window open for a spike that happened months ago (it
+     * arcs out through the top of the frame as it ages). The discount
+     * fades off during the final zoom-out, which must frame everything.
+     */
+    private static final double Y_FIT_RECENT_DAYS = 45;
+    private static final double Y_FIT_AGE_DECAY_DAYS = 75;
+    /** During the follow, the framed floor is held no lower than this far under
+     *  the live race's recent minimum, so a high leader over low/late entrants
+     *  (or ignored snow) can't sink the camera into a floored streak. Released
+     *  for the final zoom-out, which frames the whole field. */
+    private static final double FOLLOW_FLOOR_MARGIN = 0.7;
+    private static final float LABEL_EASE_RATE = 6f;
+    private static final float LABEL_TEXT_SIZE = 38f;
+    private static final float LABEL_MIN_GAP_PX = 46f;
+    /** Horizontal gap between a head dot and the start of its label block. */
+    private static final float LABEL_DOT_GAP_PX = 34f;
+    /** Square box the head-label badge is fitted into. */
+    private static final float LABEL_LOGO_BOX_PX = 36f;
+    private static final float LABEL_LOGO_SPACE_PX = LABEL_LOGO_BOX_PX + 9f;
+    private static final float LINE_STROKE_PX = 5.2f;
+    private static final float HEAD_DOT_PX = 15f;
+    private static final float RETIRE_LINE_FADE_DAYS = 60f;
+    private static final float RETIRE_LABEL_FADE_SECONDS = 1.0f;
+    /**
+     * Tracks whose data ends within this many days of "now" still count for
+     * ranking. Without it, climbers whose last knot lands a few days
+     * before the global end of the dataset would all "retire" on the final
+     * frames and hand #1 to whoever happens to have the latest knot.
+     */
+    private static final double RANK_GRACE_DAYS = 45;
+    /**
+     * A track counts as part of the race FRONT (shared label column, label
+     * queue) only while its data reaches within this many days of "now".
+     * The wider RANK_GRACE_DAYS is for ranking only — using it
+     * for the column made a freshly-retired line drag the whole label column
+     * back onto the dots.
+     */
+    private static final double FRONT_TOLERANCE_DAYS = 10;
+    /**
+     * A label only moves down/up the queue once the difficulty difference
+     * exceeds this margin — difficulty noise around a tie must not flap the
+     * queue order every few frames (the labels of a flapping pair both
+     * converge on the crossing point and render superimposed).
+     */
+    private static final double RANK_SWAP_HYSTERESIS = 0.012;
+    /**
+     * After a label trades places it cannot trade again for this long
+     * unless the difficulty gap is decisive ({@link #RANK_SWAP_FORCE}). The
+     * margin alone cannot stop near-ties whose noise swings beyond it
+     * within a fraction of a second of video — the pair's targets then
+     * exchange faster than the easing can follow and both labels converge
+     * superimposed at the crossing midpoint.
+     */
+    private static final double SWAP_COOLDOWN_SECONDS = 1.2;
+    private static final double RANK_SWAP_FORCE = 0.05;
+    /** Alpha of the translucent panels behind the HUD blocks (2DGP look). */
+    private static final float HUD_PANEL_ALPHA = 40f;
+    private static final DateTimeFormatter DATE_READOUT =
+            DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH);
+
+    // ---- Ledger: a right-column feed of recent tower completions ----
+    /** Reserved right gutter for the ledger. The race head and its labels stay
+     *  left of it; the plot (and its bands) still span the full canvas behind. */
+    private static final float LEDGER_WIDTH = 400f;
+    private static final int LEDGER_MAX_ROWS = 11;
+    private static final float LEDGER_ROW_H = 46f;
+    private static final float LEDGER_TEXT_SIZE = 30f;
+    /** Panel top, measured down from the viewport top — sits below the Current
+     *  Date panel (which ends ~136px down) with a clear gap. */
+    private static final float LEDGER_PANEL_TOP = 210f;
+    private static final float LEDGER_Y_EASE = 11f;
+    private static final float LEDGER_FADE_IN = 9f;
+    private static final float LEDGER_FADE_OUT = 7f;
+    /** New rows slide in from the right (px) as they fade in. */
+    private static final float LEDGER_ENTER_SLIDE = 55f;
+    private static final float LEDGER_ENTER_EASE = 12f;
+    /** Darker than the other HUD panels so colour-coded text keeps contrast no
+     *  matter which band sits behind it. */
+    private static final float LEDGER_PANEL_ALPHA = 62f;
+    /** Floors so the dark tiers (maroon Challenging, near-black Intense) stay
+     *  legible: lift brightness, cap saturation. */
+    private static final float LEDGER_TEXT_MIN_BRI = 88f;
+    private static final float LEDGER_TEXT_MAX_SAT = 82f;
+
+    // ---- Bullet-time: a hand-authored TEMPO schedule ----
+    // Auto density/jump detection couldn't honour director's notes like "ease out
+    // starting Nov 2" or "medium intensity here", so the slowdowns are now an
+    // explicit list of windows (see buildTempos()). Each window holds a playback
+    // multiplier over a date range with eased ramps: >1 slows (bullet-time, with a
+    // proportional x-zoom + slow-mo clock), <1 fast-forwards through dead air.
+    /** Reference "full" slowdown: a window at this multiplier drives the deepest
+     *  x-zoom + clock; the zoom/clock scale linearly with a window's multiplier. */
+    private static final double TEMPO_FULL_SLOW = 25.0;
+    /** Bullet-time x-window: squeezed from the base window down to this at full
+     *  slow. Matches INTRO_WINDOW_DAYS so a deep bullet-time shows the same weekly
+     *  date ticks as the opening, not a coarser monthly cadence. */
+    private static final double BURST_SPAN = prop("burstSpan", 50.0);
+    /** After this date the camera (y-fit) ignores snow — a low flat late entrant
+     *  that otherwise drags the framing down — so the camera tracks the real
+     *  race. The final zoom-out frames everyone again; snow's line draws the
+     *  whole time regardless. */
+    private static final LocalDate SNOW_IGNORE_DATE = LocalDate.of(2025, 7, 31);
+
+    private final DataGrid grid;
+    private final List<ValueBand> tierBands = buildTierBands();
+    private final List<Track> tracks;
+    /** Every completion, sorted by day — drives the ledger feed. */
+    private final List<Event> events;
+    /** Hand-authored bullet-time tempo windows (slowdowns + fast-forwards). */
+    private final List<Tempo> tempos;
+    private final LocalDate dayZero;
+    private final double endDay;
+    /** Day (since dayZero) at/after which the camera ignores snow — see SNOW_IGNORE_DATE. */
+    private final double snowIgnoreDay;
+    /** Y-range the final zoom-out frames: every real (non-line-mode) player plus
+     *  margins, computed once. The gag line is excluded so the axis doesn't scale
+     *  down to its -1. */
+    private final double finalYMin;
+    private final double finalYMax;
+    private final double msPerDay;
+
+    /** Ledger entries, newest at index 0; those past {@link #LEDGER_MAX_ROWS}
+     *  fade out as they are pushed off the bottom. */
+    private final List<LedgerEntry> ledger = new ArrayList<>();
+    /** Index of the next completion (in {@link #events}) not yet shown. */
+    private int eventCursor;
+
+    /** True only for the offline export; gates the {@link #BEAT_LOG_PATH} feed. */
+    private final boolean exporting = SceneContext.configuredExportFps() > 0f;
+    /** Open during an export run; one CSV row per tower-beat as it is revealed. */
+    private PrintWriter beatLog;
+
+    private PFont font;
+
+    private double tDay;
+    private double sceneSeconds;
+    /** Current bullet-time strength (0..1); drives the slow-mo clock readout. */
+    private double currentDrama;
+    private double visibleXMin;
+    private double visibleXSpan = INTRO_WINDOW_DAYS;
+    private double yShownMin = 1;
+    private double yShownMax = 6;
+
+    private Track leader;
+    private double leaderSinceDay;
+    /** Persistent head-label queue order (highest difficulty first). */
+    private final List<Track> labelOrder = new ArrayList<>();
+
+    private boolean zoomOutStarted;
+    private double zoomOutElapsed;
+    private double zoomOutStartXMin;
+    private double zoomOutStartXSpan;
+    private double zoomOutStartYMin;
+    private double zoomOutStartYMax;
+    private double zoomOutHeadFraction = MAX_FOLLOW_RATIO;
+    private double endHoldElapsed;
+    /** Pixels needed right of the head dots for the widest label block,
+     *  measured in drawHeadLabels and smoothed. */
+    private float followMarginPx = 320f;
+
+    public JtohDifficultyScene(Applet p) {
+        super(p);
+        msPerDay = readMsPerDay();
+        Loaded data = loadData(DATA_PATH);
+        tracks = data.tracks;
+        events = data.events;
+        dayZero = data.dayZero;
+        endDay = data.endDay;
+        snowIgnoreDay = SNOW_IGNORE_DATE.toEpochDay() - dayZero.toEpochDay();
+        tempos = buildTempos();
+
+        grid = new DataGrid(applet());
+        grid.setXCalendarAxis(dayZero);
+        grid.setAnchor(0, 0);
+        // Same setup as the CS2 race: hand the grid a base major step and let
+        // its adaptive 1/2/5 ladder pick the cadence. The base is 1 here (the
+        // tier width) so the ladder's gridlines land on the integer tier
+        // boundaries; nothing else about the tick/minor-grid density is touched.
+        grid.setYMajorStep(Y_BASE_STEP);
+        grid.setYLabelFormatter(value -> String.format(Locale.ENGLISH, "%.0f", value));
+        grid.setLabelSizes(AXIS_LABEL_MAJOR_SIZE, AXIS_LABEL_MINOR_SIZE);
+        grid.setLabelInsets(X_AXIS_LABEL_INSET_PX, Y_AXIS_LABEL_INSET_PX);
+        // Lift the minor gridlines so they stay legible over the coloured tier
+        // bands (they wash out at the shared default).
+        grid.setMinorGridBoost(1.3f);
+        grid.setValueBands(tierBands);
+        // Tier names off — the axis shows just the difficulty numbers; the band
+        // colours carry the tier identity.
+        grid.showValueBandLabels(false);
+        grid.setDomain(0, INTRO_WINDOW_DAYS, yShownMin, yShownMax);
+        // The follow camera is one-way: once the y-axis has collapsed away it
+        // must not reappear during the final zoom-out.
+        grid.setRailCollapseRatchet(true);
+
+        // Reserve the y-rail for the widest label the axis will ever show, so the
+        // plot's left edge holds still instead of jutting sideways when a label
+        // gains a digit ("8" -> "10") or a line dips to a negative tick. Mirror
+        // the final-zoom y-fit over the whole history to find the extreme labels.
+        // Assumes the (monospaced) axis font + this difficulty range keep every
+        // tick to <=2 chars, so the formatted fit extremes are a true WIDTH bound
+        // even though the topmost drawn tick (with grid overscan) can be a value
+        // a bit above ceil(fitTop) — same pixel width.
+        double gMin = Double.POSITIVE_INFINITY;
+        double gMax = Double.NEGATIVE_INFINITY;
+        for (Track track : tracks) {
+            for (double d = track.firstDay; d <= track.lastDay; d += Y_FIT_SAMPLE_DAYS) {
+                double v = track.spline.value(d);
+                gMin = Math.min(gMin, v);
+                gMax = Math.max(gMax, v);
+            }
+            double end = track.spline.value(track.lastDay);
+            gMin = Math.min(gMin, end);
+            gMax = Math.max(gMax, end);
+        }
+        if (gMin <= gMax) {
+            double fitSpan = Math.max(Y_MIN_SPAN, (gMax - gMin) / 0.65);
+            double fitTop = gMax + fitSpan * 0.18;
+            double fitBot = fitTop - fitSpan;
+            grid.setYLabelReserve(
+                    String.format(Locale.ENGLISH, "%.0f", Math.ceil(fitTop)),
+                    String.format(Locale.ENGLISH, "%.0f", Math.floor(fitBot)));
+        }
+
+        // Final-frame y-range over the REAL players only (skip the line-mode gag),
+        // so the end zoom-out settles on snow..Amog with a little margin instead of
+        // scaling the axis down to Lintahlo's -1.
+        double rMin = Double.POSITIVE_INFINITY;
+        double rMax = Double.NEGATIVE_INFINITY;
+        for (Track track : tracks) {
+            if (track.lineMode) {
+                continue;
+            }
+            for (double d = track.firstDay; d <= track.lastDay; d += Y_FIT_SAMPLE_DAYS) {
+                double v = track.spline.value(d);
+                rMin = Math.min(rMin, v);
+                rMax = Math.max(rMax, v);
+            }
+        }
+        if (rMin > rMax) {
+            rMin = 0;
+            rMax = Y_MIN_SPAN;
+        }
+        finalYMin = rMin - FINAL_BOTTOM_MARGIN;
+        finalYMax = rMax + (rMax - rMin) * FINAL_TOP_HEADROOM;
+    }
+
+    @Override
+    protected void onReset() {
+        tDay = 0;
+        sceneSeconds = 0;
+        visibleXMin = 0;
+        visibleXSpan = INTRO_WINDOW_DAYS;
+        yShownMin = 1;
+        yShownMax = 6;
+        leader = null;
+        leaderSinceDay = 0;
+        zoomOutStarted = false;
+        zoomOutElapsed = 0;
+        zoomOutHeadFraction = MAX_FOLLOW_RATIO;
+        endHoldElapsed = 0;
+        followMarginPx = 320f;
+        currentDrama = 0;
+        labelOrder.clear();
+        ledger.clear();
+        eventCursor = 0;
+        for (Track track : tracks) {
+            track.labelInitialised = false;
+            track.labelAlpha = 0f;
+            track.labelOffset = 0f;
+            track.lastQueueSwapSeconds = Double.NEGATIVE_INFINITY;
+            track.strokeBoost = 0f;
+        }
+        grid.setDomain(0, INTRO_WINDOW_DAYS, yShownMin, yShownMax);
+        grid.setRailCollapseRatchet(true);
+    }
+
+    /** (Re)open the per-beat log for an export run, truncating any prior file.
+     *  Header mirrors {@link #logBeat}. No-op for the windowed/realtime run. */
+    private void openBeatLog() {
+        if (beatLog != null) {
+            beatLog.close();
+            beatLog = null;
+        }
+        if (!exporting) {
+            return;
+        }
+        try {
+            Path path = Path.of(BEAT_LOG_PATH);
+            Files.createDirectories(path.toAbsolutePath().getParent());
+            // autoFlush: every beat is durable the moment it is written, so the
+            // file is complete even if the export is cut short by -DmaxFrames.
+            beatLog = new PrintWriter(Files.newBufferedWriter(path), true);
+            beatLog.println("seconds,day,date,player,code,difficulty");
+            System.out.println("Beat log -> " + path.toAbsolutePath());
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not open beat log " + BEAT_LOG_PATH, e);
+        }
+    }
+
+    /** Record a tower-beat at the current video timestamp ({@link #sceneSeconds}),
+     *  the frame it slides into the ledger. */
+    private void logBeat(Event event) {
+        if (beatLog == null) {
+            return;
+        }
+        LocalDate date = dayZero.plusDays((long) Math.floor(event.day));
+        beatLog.printf(Locale.ROOT, "%.4f,%.3f,%s,%s,%s,%.3f%n",
+                sceneSeconds, event.day, date, event.track.name, event.code, event.difficulty);
+    }
+
+    @Override
+    protected Action build() {
+        // build() is the one hook that always runs at export startup (onReset
+        // only fires on a Director replay), so the beat log is opened here.
+        openBeatLog();
+        addUpdater(this::updateTimeline);
+        // ensureFont() hands the grid its Lato label font; run it before the
+        // grid's first render or frame 1 draws the axis labels in the grid's
+        // own fallback font (Computer Modern) and pops to Lato on frame 2.
+        addNode(Nodes.of(() -> {
+            ensureFont();
+            grid.render();
+        }));
+        addNode(Nodes.of(this::drawSeries));
+        addNode(this::drawHeadLabels);
+        addNode(Nodes.of(this::drawLeaderHeader));
+        addNode(Nodes.of(this::drawDateReadout));
+        addNode(Nodes.of(this::drawLedger));
+
+        return Actions.update(this::isFinished);
+    }
+
+    private boolean isFinished() {
+        return zoomOutStarted
+                && zoomOutElapsed >= FINAL_ZOOM_DELAY + FINAL_Y_DURATION
+                        + FINAL_ZOOM_PAUSE + FINAL_X_DURATION
+                && endHoldElapsed >= END_HOLD_SECONDS;
+    }
+
+    // ------------------------------------------------------------------
+    // Simulation / camera
+    // ------------------------------------------------------------------
+
+    private void updateTimeline(SceneContext ctx) {
+        double dt = ctx.dt();
+        sceneSeconds += dt;
+        grid.setLabelFadeTimeStep(dt);
+
+        // Hand-authored tempo: a playback multiplier for this sim-day (>1 slow,
+        // <1 fast-forward). drama (0..1) is the slowdown depth, driving the x-zoom
+        // squeeze + slow-mo clock; speed-ups (tempo<1) give drama 0 (no zoom).
+        double tempo = zoomOutStarted ? 1.0 : tempoAt(tDay);
+        double drama = clamp01((tempo - 1.0) / (TEMPO_FULL_SLOW - 1.0));
+        currentDrama = drama;
+        // Tempo and the intro slowdown compose multiplicatively: through the
+        // zoomed-in opening the clock runs slow and eases back as the window
+        // expands; after that the tempo schedule takes over.
+        double rateScale = tempo * introRateScale(tDay);
+        tDay = Math.min(endDay, tDay + dt * 1000.0 / (msPerDay * rateScale));
+
+        if (tDay >= endDay) {
+            updateFinalZoom(dt);
+        } else {
+            double ratio = followRatio();
+            double baseWindow = baseWindowDays(tDay);
+            visibleXSpan = baseWindow - drama * (baseWindow - BURST_SPAN);
+            double followStart = visibleXMin + visibleXSpan * ratio;
+            if (drama > 0.001) {
+                // Pin the head while zoomed: the span changes both ways, so the
+                // one-way follow ratchet can't keep the head in place here.
+                visibleXMin = tDay - visibleXSpan * ratio;
+            } else if (tDay > followStart) {
+                visibleXMin = tDay - visibleXSpan * ratio;
+            }
+        }
+        grid.setXRange(visibleXMin, visibleXMin + visibleXSpan);
+
+        updateRanking(dt);
+        updateYFit(dt);
+        updateLedger(dt);
+    }
+
+    /** Non-bullet-time window width: opens zoomed in at INTRO_WINDOW_DAYS so the
+     *  weekly date labels are readable, then eases out to the full WINDOW_DAYS
+     *  after the opening. */
+    private double baseWindowDays(double day) {
+        double t = clamp01((day - INTRO_WINDOW_EXPAND_START_DAY) / INTRO_WINDOW_EXPAND_DAYS);
+        // Smoothstep expands with zero slope at both ends, so the window neither
+        // jerks into motion nor snaps to a halt — that is the "seamless" part.
+        // The opening no longer feels rushed because the sim clock
+        // (introRateScale) now carries the slow-to-fast pacing, not this curve.
+        return INTRO_WINDOW_DAYS + (WINDOW_DAYS - INTRO_WINDOW_DAYS) * smoothstep(t);
+    }
+
+    /** Sim-clock multiplier for the opening, a smooth trapezoid in sim-day:
+     *  <ul>
+     *    <li>[0, lead): the empty pre-race lead-in eases from full speed into the
+     *        slow opening, so the bare establishing shot doesn't drag;</li>
+     *    <li>[lead, expandStart): the zoomed-in, week-tick race opening holds at
+     *        {@link #INTRO_SLOWDOWN}x so the first clears land deliberately;</li>
+     *    <li>[expandStart, expandEnd): eases back to full speed exactly as the
+     *        window expands, so the scene accelerates seamlessly into the cruise.</li>
+     *  </ul>
+     *  Story pace (sim-days per second) therefore ramps slow→fast across the
+     *  zoom-out, with zero-slope joins at each segment so there is no hitch. */
+    private double introRateScale(double day) {
+        if (zoomOutStarted) {
+            return 1.0;
+        }
+        if (day < INTRO_LEAD_DAYS) {
+            return 1.0 + (INTRO_SLOWDOWN - 1.0) * smoothstep(clamp01(day / INTRO_LEAD_DAYS));
+        }
+        if (day < INTRO_WINDOW_EXPAND_START_DAY) {
+            return INTRO_SLOWDOWN;
+        }
+        double t = clamp01((day - INTRO_WINDOW_EXPAND_START_DAY) / INTRO_WINDOW_EXPAND_DAYS);
+        return 1.0 + (INTRO_SLOWDOWN - 1.0) * (1.0 - smoothstep(t));
+    }
+
+    /** Playback-rate multiplier for a sim-day: the product of every tempo
+     *  window's contribution (1.0 outside any window). >1 slows, <1 fast-forwards. */
+    private double tempoAt(double day) {
+        double mult = 1.0;
+        for (Tempo t : tempos) {
+            mult *= windowMult(t, day);
+        }
+        return mult;
+    }
+
+    /** One window's eased multiplier at a sim-day: held at {@code peak} across
+     *  [holdStart, holdEnd], easing from 1.0 over {@code rampIn} days before and
+     *  back to 1.0 over {@code rampOut} days after (smoothstep, so it dives in and
+     *  lifts out with zero slope at the joins). Separate in/out ramps allow a sharp
+     *  ramp-in to a spike with a long, gentle pull-out afterwards. */
+    private static double windowMult(Tempo t, double day) {
+        if (day <= t.holdStart - t.rampIn || day >= t.holdEnd + t.rampOut) {
+            return 1.0;
+        }
+        if (day < t.holdStart) {
+            return 1.0 + (t.peak - 1.0) * smoothstep((day - (t.holdStart - t.rampIn)) / t.rampIn);
+        }
+        if (day <= t.holdEnd) {
+            return t.peak;
+        }
+        return 1.0 + (t.peak - 1.0) * smoothstep(1.0 - (day - t.holdEnd) / t.rampOut);
+    }
+
+    /**
+     * Hand-authored bullet-time schedule (director's cut). Each window holds a
+     * playback multiplier over a date range with eased ramps in/out — &gt;1 slows
+     * (bullet-time, with a proportional x-zoom + slow-mo clock), &lt;1 fast-forwards
+     * through dead air. Edit the dates and intensities here to retime the cut; the
+     * opening (intro pacing) and the final zoom-out are handled separately.
+     */
+    private List<Tempo> buildTempos() {
+        List<Tempo> list = new ArrayList<>();
+        // Fast-forward the dead stretch — Amog establishing alone, nothing else moves.
+        list.add(tempo(LocalDate.of(2023, 9, 1), LocalDate.of(2024, 9, 20), 10, 0.55));
+        // First monster: hold full slow-mo across the Oct 22–Nov 1 flurry, easing
+        // out only from Nov 2 — so the deep part lands ON the action, not before it.
+        list.add(tempo(LocalDate.of(2024, 10, 18), LocalDate.of(2024, 11, 1), 8, 25.0));
+        // Amog's huge Feb 12 spike (beats ToTS at 7.09, his biggest leap): a sharp
+        // ramp-in from Feb 7 to full force AT the spike, then a long, gentle ease-out
+        // through the aftermath to ~Mar 19. rampIn 5d (Feb 7→12), rampOut 32d (Feb
+        // 15→Mar 19).
+        list.add(tempo(LocalDate.of(2025, 2, 12), LocalDate.of(2025, 2, 15), 5, 32, 20.0));
+        // Eggnote + fairylog climb in summer — a gentle beat; not much else happens.
+        list.add(tempo(LocalDate.of(2025, 7, 18), LocalDate.of(2025, 8, 3), 8, 8.0));
+        return list;
+    }
+
+    /** Symmetric-ramp window (rampIn == rampOut). */
+    private Tempo tempo(LocalDate holdStart, LocalDate holdEnd, double ramp, double peak) {
+        return tempo(holdStart, holdEnd, ramp, ramp, peak);
+    }
+
+    private Tempo tempo(LocalDate holdStart, LocalDate holdEnd,
+                        double rampIn, double rampOut, double peak) {
+        return new Tempo(dayOf(holdStart), dayOf(holdEnd), rampIn, rampOut, peak);
+    }
+
+    /** Sim-day index (since dayZero) for a calendar date. */
+    private double dayOf(LocalDate date) {
+        return date.toEpochDay() - dayZero.toEpochDay();
+    }
+
+    /** A bullet-time tempo window: a playback multiplier held across [holdStart,
+     *  holdEnd] (sim-days since dayZero), eased in over {@code rampIn} days and out
+     *  over {@code rampOut} days. */
+    private static final class Tempo {
+        private final double holdStart;
+        private final double holdEnd;
+        private final double rampIn;
+        private final double rampOut;
+        private final double peak;
+
+        private Tempo(double holdStart, double holdEnd, double rampIn, double rampOut, double peak) {
+            this.holdStart = holdStart;
+            this.holdEnd = holdEnd;
+            this.rampIn = rampIn;
+            this.rampOut = rampOut;
+            this.peak = peak;
+        }
+    }
+
+    /**
+     * Head-dot fraction of the window that keeps the measured label block
+     * (dot gap + badge + widest text) inside the viewport's right edge.
+     */
+    private double followRatio() {
+        float plotWidth = grid.getPlotWidth();
+        if (plotWidth <= 0f) {
+            return MAX_FOLLOW_RATIO;
+        }
+        double headX = raceRightEdge() - followMarginPx;
+        double ratio = (headX - grid.getPlotLeft()) / plotWidth;
+        return Math.max(0.5, Math.min(MAX_FOLLOW_RATIO, ratio));
+    }
+
+    private void updateFinalZoom(double dt) {
+        if (!zoomOutStarted) {
+            zoomOutStarted = true;
+            zoomOutElapsed = 0;
+            // Final follow step at the handover: the forward phase scrolls the
+            // window left every frame to hold the race head at the follow
+            // fraction. The frame that clamps tDay to endDay advances the head
+            // a few days without that scroll, so freezing the window here would
+            // jut the head right. Apply the scroll the follow would have, so
+            // the head is already at its follow fraction when it gets pinned.
+            double ratio = followRatio();
+            if (endDay > visibleXMin + visibleXSpan * ratio) {
+                visibleXMin = endDay - visibleXSpan * ratio;
+            }
+            zoomOutStartXMin = visibleXMin;
+            zoomOutStartXSpan = visibleXSpan;
+            zoomOutStartYMin = yShownMin;
+            zoomOutStartYMax = yShownMax;
+            // Pin the race head to its current screen position: only the
+            // history behind it compresses as the window stretches back to
+            // day zero, so the dots and labels never move horizontally.
+            zoomOutHeadFraction = clamp01((endDay - zoomOutStartXMin) / zoomOutStartXSpan);
+            zoomOutHeadFraction = Math.max(0.5, Math.min(0.95, zoomOutHeadFraction));
+        }
+        zoomOutElapsed += dt;
+        // The x-axis stretch waits for the y-axis to ease out (updateYFit eases to
+        // finalYMin/Max) plus a held beat, so the camera first reveals everyone
+        // vertically, pauses, THEN pulls back through the whole timeline.
+        double xStart = FINAL_ZOOM_DELAY + FINAL_Y_DURATION + FINAL_ZOOM_PAUSE;
+        double progress = clamp01((zoomOutElapsed - xStart) / FINAL_X_DURATION);
+        double eased = smoothstep(progress);
+        visibleXMin = interpolate(zoomOutStartXMin, 0, eased);
+        visibleXSpan = (endDay - visibleXMin) / zoomOutHeadFraction;
+        if (progress >= 1.0) {
+            endHoldElapsed += dt;
+        }
+    }
+
+    private void updateRanking(double dt) {
+        Track best = null;
+        double bestValue = Double.NEGATIVE_INFINITY;
+        for (Track track : tracks) {
+            if (!track.isActiveAt(tDay)) {
+                continue;
+            }
+            double value = track.spline.value(tDay);
+            if (value > bestValue) {
+                bestValue = value;
+                best = track;
+            }
+        }
+        if (best != null && best != leader) {
+            leader = best;
+            leaderSinceDay = tDay;
+        }
+        if (leader != null && !leader.isActiveAt(tDay)) {
+            leader = null;
+        }
+        for (Track track : tracks) {
+            float target = track == leader ? 1f : 0f;
+            track.strokeBoost = ease(track.strokeBoost, target, dt, 6f);
+        }
+    }
+
+    /** Snow is ignored by the camera between SNOW_IGNORE_DATE and the final
+     *  zoom-out, so the y-fit lifts off its low flat line and tracks the real
+     *  race. Snow still draws — it just no longer drags the framing down. */
+    private boolean ignoredByCamera(Track track) {
+        return !zoomOutStarted && tDay >= snowIgnoreDay && "snow".equals(track.name);
+    }
+
+    private void updateYFit(double dt) {
+        // Final zoom-out: ease to the precomputed range that frames every REAL
+        // player (Lintahlo, the gag line that dips to -1, is excluded — we pretend
+        // it isn't there, so the y-axis settles on snow..Amog instead of scaling
+        // all the way down). Easing here is the y-out phase; the x stretch waits
+        // for it (see updateFinalZoom). Holding a fixed target also stops the
+        // y-axis re-expanding as the widening x-window pulls in old low history.
+        if (zoomOutStarted) {
+            // Deliberate, timed y-out (smoothstep over FINAL_Y_DURATION) rather
+            // than an exponential ease, so its pace is set directly by that knob.
+            double yProg = smoothstep(clamp01(
+                    (zoomOutElapsed - FINAL_ZOOM_DELAY) / FINAL_Y_DURATION));
+            yShownMin = interpolate(zoomOutStartYMin, finalYMin, yProg);
+            yShownMax = interpolate(zoomOutStartYMax, finalYMax, yProg);
+            grid.setYRange(yShownMin, yShownMax);
+            return;
+        }
+
+        double xLo = visibleXMin;
+        double xHi = visibleXMin + visibleXSpan;
+
+        // Pass 1: full-weight range over recent data (and line heads).
+        double recentMin = Double.POSITIVE_INFINITY;
+        double recentMax = Double.NEGATIVE_INFINITY;
+        double recentCutoff = tDay - Y_FIT_RECENT_DAYS;
+        for (Track track : tracks) {
+            if (ignoredByCamera(track)) {
+                continue;
+            }
+            double lo = Math.max(Math.max(track.firstDay, xLo), recentCutoff);
+            double hi = Math.min(Math.min(tDay, track.lastDay), xHi);
+            if (hi <= lo) {
+                continue;
+            }
+            for (double d = lo; d <= hi + 1e-9; d += Y_FIT_SAMPLE_DAYS) {
+                double v = track.spline.value(Math.min(d, hi));
+                recentMin = Math.min(recentMin, v);
+                recentMax = Math.max(recentMax, v);
+            }
+            double hiv = track.spline.value(hi);
+            recentMin = Math.min(recentMin, hiv);
+            recentMax = Math.max(recentMax, hiv);
+        }
+
+        // The age discount releases old extremes during the follow; the final
+        // zoom-out is handled by the early return above, so it is always full here.
+        double discountStrength = 1.0;
+
+        // Pass 2: all visible data, with extremes older than the recent
+        // window decayed toward the recent range by age. Samples sit on an
+        // ABSOLUTE day grid plus exact endpoints: a grid anchored to the
+        // moving window edge shifts its sample set every frame, and the
+        // resulting min/max wobble made the chart jitter during the zoom-out.
+        boolean haveRecent = recentMin <= recentMax;
+        double min = haveRecent ? recentMin : Double.POSITIVE_INFINITY;
+        double max = haveRecent ? recentMax : Double.NEGATIVE_INFINITY;
+        for (Track track : tracks) {
+            if (ignoredByCamera(track)) {
+                continue;
+            }
+            double lo = Math.max(track.firstDay, xLo);
+            double hi = Math.min(Math.min(tDay, track.lastDay), xHi);
+            if (hi <= lo) {
+                continue;
+            }
+            // Every track is age-discounted, line-mode gag included. A long-retired
+            // line (Lintahlo, ending at -1) must NOT keep holding the framing open
+            // to its old extreme: it used to get full weight here so it wouldn't
+            // clamp flat to the plot bottom, but now that the series is CLIPPED to
+            // the plot (not clamped) it simply slides off the bottom instead. The
+            // age discount then releases its -1 gradually, so the camera no longer
+            // snaps upward the day the line finally scrolls off the left edge.
+            double trackDiscount = haveRecent ? discountStrength : 0.0;
+            for (double endpoint : new double[]{lo, hi}) {
+                double v = ageDiscounted(track.spline.value(endpoint), tDay - endpoint,
+                        recentMin, recentMax, trackDiscount);
+                min = Math.min(min, v);
+                max = Math.max(max, v);
+            }
+            double first = Math.ceil(lo / Y_FIT_SAMPLE_DAYS) * Y_FIT_SAMPLE_DAYS;
+            for (double d = first; d <= hi + 1e-9; d += Y_FIT_SAMPLE_DAYS) {
+                double v = ageDiscounted(track.spline.value(d), tDay - d,
+                        recentMin, recentMax, trackDiscount);
+                min = Math.min(min, v);
+                max = Math.max(max, v);
+            }
+        }
+        if (min > max) {
+            return; // nothing visible yet — keep the current window
+        }
+
+        // Moderate top headroom: the leader visibly climbs before the
+        // rescale catches up, but stays clear of the Current Date panel.
+        double span = Math.max(Y_MIN_SPAN, (max - min) / 0.65);
+        double targetMax = max + span * 0.18;
+        double targetMin = targetMax - span;
+
+        // Hold the floor near the live race's lower edge during the follow.
+        // The fill-factor padding above sinks targetMin well below the data, so
+        // when the spread is wide (a high leader over still-climbing chasers) the
+        // low climbers — and snow once ignored — get crammed into a floored streak
+        // at the very bottom. Bounding the floor to just under recentMin (which
+        // already excludes ignored snow) lifts the camera onto the real race and
+        // lets the older/lower history slide off the bottom (clipped, not floored).
+        // The min() keeps at least Y_MIN_SPAN, so a tightly-clustered field (or the
+        // early Amog-only stretch) is untouched. (The final zoom-out never reaches
+        // here — it eases to the precomputed real-player range above.)
+        if (haveRecent) {
+            double liftedMin = Math.max(targetMin, recentMin - FOLLOW_FLOOR_MARGIN);
+            targetMin = Math.min(liftedMin, targetMax - Y_MIN_SPAN);
+        }
+
+        // Ease toward the fit every frame, including the first frame data
+        // appears. Snapping the window onto the data there (the old behaviour)
+        // lurched the whole band stack in a single frame, because the default
+        // window starts far from where the JToH data begins; easing glides the
+        // camera onto the race instead.
+        yShownMin = ease((float) yShownMin, (float) targetMin, dt, Y_FIT_EASE_RATE);
+        yShownMax = ease((float) yShownMax, (float) targetMax, dt, Y_FIT_EASE_RATE);
+        grid.setYRange(yShownMin, yShownMax);
+    }
+
+    // ------------------------------------------------------------------
+    // Drawing
+    // ------------------------------------------------------------------
+
+    private void drawSeries() {
+        Applet p = applet();
+        double xLo = grid.getXMin();
+        double xHi = grid.getXMax();
+        double stepDays = Math.max(0.4, (xHi - xLo) / Math.max(1f, grid.getPlotWidth()) * 2.0);
+        // Clip the series to the plot rect so a line leaving the frame exits
+        // cleanly at the edge instead of being clamped flat along it: a climber's
+        // low early history — and snow's flat line once the camera lifts off it
+        // past SNOW_IGNORE_DATE — slides off the BOTTOM rather than riding it as a
+        // floored streak, while an aged-out spike leaves through the TOP at its
+        // true angle instead of flattening into a plateau. The loose y-bounds
+        // only keep canvas coordinates finite for values far outside the window;
+        // the clip does the actual edge cut.
+        float plotLeft = grid.getPlotLeft();
+        float plotTop = grid.getPlotTop();
+        float plotW = grid.getPlotWidth();
+        float plotH = grid.getPlotHeight();
+        float yLoBound = plotTop - 2000f;
+        float yHiBound = plotTop + plotH + 2000f;
+        p.clip(plotLeft, plotTop, plotW, plotH);
+
+        for (Track track : tracks) {
+            double headDay = Math.min(tDay, track.lastDay);
+            double lo = Math.max(track.firstDay, xLo);
+            double hi = Math.min(headDay, xHi);
+            if (hi <= lo) {
+                continue;
+            }
+
+            float lineAlpha = 100f;
+            if (tDay > track.lastDay) {
+                lineAlpha = 100f - 56f * clamp01F((float) ((tDay - track.lastDay) / RETIRE_LINE_FADE_DAYS));
+            }
+
+            p.noFill();
+            strokeTrack(track, lineAlpha);
+            p.strokeWeight(LINE_STROKE_PX + 1.8f * track.strokeBoost);
+            p.beginShape();
+            // Sample on an ABSOLUTE day grid (plus the exact endpoints) so the
+            // polyline stays put as the window pans. Anchoring samples to the
+            // moving left edge slid them across the fixed PCHIP every frame, so
+            // sharp PR risers re-approximated differently each frame — the
+            // "history changing" shimmer.
+            p.vertex(grid.domainToCanvasX(lo),
+                    clamp(grid.domainToCanvasY(track.spline.value(lo)), yLoBound, yHiBound));
+            for (double d = Math.ceil(lo / stepDays) * stepDays; d < hi; d += stepDays) {
+                p.vertex(grid.domainToCanvasX(d),
+                        clamp(grid.domainToCanvasY(track.spline.value(d)), yLoBound, yHiBound));
+            }
+            p.vertex(grid.domainToCanvasX(hi),
+                    clamp(grid.domainToCanvasY(track.spline.value(hi)), yLoBound, yHiBound));
+            p.endShape();
+
+            if (headDay >= xLo && headDay <= xHi && tDay >= track.firstDay) {
+                float hx = grid.domainToCanvasX(headDay);
+                float hy = clamp(grid.domainToCanvasY(track.spline.value(headDay)), yLoBound, yHiBound);
+                // Reference style: plain white head dot.
+                p.noStroke();
+                p.fill(0, 0, 100, lineAlpha);
+                p.circle(hx, hy, HEAD_DOT_PX + 3f * track.strokeBoost);
+            }
+        }
+        p.noClip();
+    }
+
+    private void drawHeadLabels(SceneContext ctx) {
+        Applet p = applet();
+        ensureFont();
+        p.textFont(font);
+
+        float plotTop = grid.getPlotTop();
+        float plotBottom = plotTop + grid.getPlotHeight();
+        double dt = ctx.dt();
+
+        // Collect visible labels with their natural (line-head) positions.
+        // Only tracks whose data reaches "now" form the race FRONT — they
+        // share one label column and the collision queue. A retired line's
+        // label starts fading the moment it drops out of the front (waiting
+        // for the wider RANK_GRACE_DAYS left it parked at full alpha in the
+        // path of the advancing column), and keeps sitting at its own line
+        // end so it never drags the column backward onto the dots.
+        List<Track> visible = new ArrayList<>();
+        List<Track> front = new ArrayList<>();
+        for (Track track : tracks) {
+            // Line-mode tracks (Lintahlo) leave the front the instant their data
+            // ends — no front tolerance — so their label fades in place at its
+            // own line end instead of riding the live race-head column rightward.
+            double frontTolerance = track.lineMode ? 0.0 : FRONT_TOLERANCE_DAYS;
+            boolean inFront = tDay >= track.firstDay && tDay <= track.lastDay + frontTolerance;
+            // Drop the label once its head dot sinks past the bottom horizon
+            // (value below the framed floor — the line is clipped there too), so a
+            // track the camera has climbed above — snow, once ignored — leaves no
+            // orphaned label pinned to the edge. It fades back in if the head
+            // re-enters the frame (e.g. the final zoom-out drops the floor).
+            double headDay = Math.min(tDay, track.lastDay);
+            float trueHeadY = grid.domainToCanvasY(track.spline.value(headDay));
+            boolean belowHorizon = trueHeadY > plotBottom;
+            float targetAlpha = (inFront && !belowHorizon) ? 1f : 0f;
+            track.labelAlpha = ease(track.labelAlpha, targetAlpha,
+                    dt, targetAlpha > track.labelAlpha ? 4f : 1f / (RETIRE_LABEL_FADE_SECONDS * 0.45f));
+            if (track.labelAlpha <= 0.02f || headDay < grid.getXMin() || tDay < track.firstDay) {
+                continue;
+            }
+            track.labelTargetY = clamp(trueHeadY, plotTop + 26f, plotBottom - 22f);
+            track.labelDotY = track.labelTargetY; // live head-dot Y, before stacking
+            track.labelHeadX = grid.domainToCanvasX(Math.min(headDay, grid.getXMax()));
+            visible.add(track);
+            if (inFront) {
+                front.add(track);
+            }
+        }
+
+        // The queue: every visible label (front AND still-fading retirees —
+        // a fresh retiree's line end sits right in the column's path) is
+        // ranked and the TARGETS are spread to the minimum gap in that
+        // order. Displayed positions just ease toward those targets: on an
+        // overtake the ranks swap and the two labels visibly slide past
+        // each other. (Re-running the gap solve on the eased positions in
+        // the new rank order — the old behaviour — teleported the pair into
+        // the swapped arrangement in a single frame.)
+        //
+        // The order itself is persistent with hysteresis: two near-tied
+        // difficulties cross back and forth every few frames, and re-sorting
+        // on the raw values flapped the pair's targets so fast that both eased
+        // labels converged on the crossing point and sat superimposed. A
+        // pair only trades places once the lower label's difficulty leads by a
+        // real margin, so ties hold a stable stack and a genuine overtake
+        // fires exactly one clean slide.
+        labelOrder.retainAll(visible);
+        for (Track track : visible) {
+            if (!labelOrder.contains(track)) {
+                labelOrder.add(track);
+            }
+        }
+        boolean reordered = true;
+        while (reordered) {
+            reordered = false;
+            for (int i = 0; i + 1 < labelOrder.size(); i++) {
+                Track upper = labelOrder.get(i);
+                Track lower = labelOrder.get(i + 1);
+                double lead = ratingNow(lower) - ratingNow(upper);
+                boolean cooled = sceneSeconds - upper.lastQueueSwapSeconds > SWAP_COOLDOWN_SECONDS
+                        && sceneSeconds - lower.lastQueueSwapSeconds > SWAP_COOLDOWN_SECONDS;
+                if (lead > RANK_SWAP_HYSTERESIS && (cooled || lead > RANK_SWAP_FORCE)) {
+                    labelOrder.set(i, lower);
+                    labelOrder.set(i + 1, upper);
+                    upper.lastQueueSwapSeconds = sceneSeconds;
+                    lower.lastQueueSwapSeconds = sceneSeconds;
+                    reordered = true;
+                }
+            }
+        }
+
+        float queueTop = plotTop + 26f;
+        float queueBottom = plotBottom - 22f;
+        float[] targets = new float[labelOrder.size()];
+        for (int i = 0; i < labelOrder.size(); i++) {
+            targets[i] = labelOrder.get(i).labelTargetY;
+        }
+        stackWithGaps(targets, queueTop, queueBottom);
+        for (int i = 0; i < labelOrder.size(); i++) {
+            labelOrder.get(i).labelTargetY = targets[i];
+        }
+
+        // Ease only the collision displacement (stacked target minus the live
+        // head-dot Y) and add it back onto the dot Y, so the label tracks the
+        // head exactly. Easing the absolute canvas Y instead left the label
+        // trailing the head whenever the y-window rescaled quickly (e.g. the
+        // intro ease) — only label-vs-label spacing should ease, not the dot.
+        for (Track track : visible) {
+            float displacement = track.labelTargetY - track.labelDotY;
+            if (!track.labelInitialised) {
+                track.labelOffset = displacement;
+                track.labelInitialised = true;
+            } else {
+                track.labelOffset = ease(track.labelOffset, displacement, dt, LABEL_EASE_RATE);
+            }
+            track.labelY = track.labelDotY + track.labelOffset;
+        }
+
+        // One shared column for the front, anchored to the live race head.
+        // Retiring tracks can keep fading in the column during the short front
+        // tolerance, but their frozen line ends must not pull the column left.
+        // Labels may run past the plot into the right margin — only the
+        // viewport edge clips them.
+        p.textSize(LABEL_TEXT_SIZE);
+        float maxLabelWidth = 0f;
+        for (Track track : visible) {
+            maxLabelWidth = Math.max(maxLabelWidth, p.textWidth(headLabelText(track)));
+        }
+        // Feed the camera the room this frame's labels actually need, so the
+        // follow fraction keeps the whole block right of every line end and
+        // left of the ledger gutter.
+        float requiredMargin = LABEL_DOT_GAP_PX + maxLabelWidth + LABEL_MARGIN_EXTRA_PX;
+        followMarginPx = ease(followMarginPx, requiredMargin, dt, 2f);
+        // Clamp the column off the EASED margin, not the raw label width — a
+        // label that suddenly widens (Lintahlo gaining a minus sign as it
+        // crosses 0) would otherwise jerk the whole column left in one frame.
+        float clampX = raceRightEdge() - followMarginPx + LABEL_DOT_GAP_PX;
+        float frontX = grid.domainToCanvasX(Math.min(tDay, grid.getXMax()));
+        float columnX = Math.min(frontX + LABEL_DOT_GAP_PX, clampX);
+
+        // Draw bottom rank first: during a swap the rising label has already
+        // taken the higher rank, so it renders later — always in FRONT of
+        // the label it is passing.
+        for (int i = labelOrder.size() - 1; i >= 0; i--) {
+            Track track = labelOrder.get(i);
+            String label = headLabelText(track);
+            float x = front.contains(track)
+                    ? columnX
+                    : Math.min(track.labelHeadX + LABEL_DOT_GAP_PX, clampX);
+
+            p.textAlign(Applet.LEFT, Applet.CENTER);
+            p.noStroke();
+            p.textSize(LABEL_TEXT_SIZE);
+            p.fill(0, 0, 0, 62f * track.labelAlpha);
+            p.text(label, x + 2f, track.labelY + 2f);
+            fillTrack(track, 100f * track.labelAlpha);
+            p.text(label, x, track.labelY);
+        }
+    }
+
+    /** Head label: {@code Username (7.43)} — current PR — in the line colour. */
+    private String headLabelText(Track track) {
+        return track.name + " (" + String.format(Locale.ENGLISH, "%.2f", ratingNow(track)) + ")";
+    }
+
+    /** Current difficulty; frozen at the final knot once the track has retired. */
+    private double ratingNow(Track track) {
+        return track.spline.value(Math.min(tDay, track.lastDay));
+    }
+
+    /**
+     * Enforce the minimum gap with the least total displacement
+     * (pool-adjacent-violators): an isolated label sits exactly at its dot,
+     * and a conflicting group centres on the mean of its dots instead of
+     * always being pushed downward — so the top of a cluster floats slightly
+     * above its dot and the bottom slightly below, keeping names visually
+     * attached to their lines.
+     */
+    private static void stackWithGaps(float[] ys, float top, float bottom) {
+        int n = ys.length;
+        if (n == 0) {
+            return;
+        }
+
+        // Substituting z_i = y_i - i*gap turns "gaps >= gap" into "z is
+        // non-decreasing"; isotonic regression via pool-adjacent-violators.
+        float[] blockSum = new float[n];
+        int[] blockCount = new int[n];
+        int blocks = 0;
+        for (int i = 0; i < n; i++) {
+            blockSum[blocks] = ys[i] - i * LABEL_MIN_GAP_PX;
+            blockCount[blocks] = 1;
+            blocks++;
+            while (blocks > 1 && blockSum[blocks - 2] / blockCount[blocks - 2]
+                    >= blockSum[blocks - 1] / blockCount[blocks - 1]) {
+                blockSum[blocks - 2] += blockSum[blocks - 1];
+                blockCount[blocks - 2] += blockCount[blocks - 1];
+                blocks--;
+            }
+        }
+        int index = 0;
+        for (int b = 0; b < blocks; b++) {
+            float mean = blockSum[b] / blockCount[b];
+            for (int k = 0; k < blockCount[b]; k++) {
+                ys[index] = mean + index * LABEL_MIN_GAP_PX;
+                index++;
+            }
+        }
+
+        // Keep the whole stack inside the plot (bottom bound wins if the
+        // stack is taller than the plot, which cannot happen in practice).
+        float shiftDown = top - ys[0];
+        if (shiftDown > 0) {
+            for (int i = 0; i < n; i++) {
+                ys[i] += shiftDown;
+            }
+        }
+        float shiftUp = ys[n - 1] - bottom;
+        if (shiftUp > 0) {
+            for (int i = 0; i < n; i++) {
+                ys[i] -= shiftUp;
+            }
+        }
+    }
+
+    /**
+     * Reference-style header, no card box:
+     * {@code Leader: [avatar] Name (difficulty)} with
+     * {@code For N days (~Y.YY years)} underneath.
+     */
+    private void drawLeaderHeader() {
+        // During the intro lead (before the first clear) there is no leader yet;
+        // skip the header rather than drawing a "?" placeholder.
+        if (leader == null) {
+            return;
+        }
+        Applet p = applet();
+        ensureFont();
+        p.textFont(font);
+
+        float x = grid.getPlotLeft() + 28f;
+        float y = -halfViewportHeight() + 24f;
+
+        String prefix = "Leader:  ";
+        String rating = String.format(Locale.ENGLISH, "%.2f", leader.spline.value(tDay));
+        String title = leader.name + " (" + rating + ")";
+        int days = (int) Math.max(0, Math.floor(tDay - leaderSinceDay));
+        String tenure = "For " + days + (days == 1 ? " day" : " days")
+                + String.format(Locale.ENGLISH, " (~%.2f years)", days / 365.25);
+        // Live count of towers the leader has cleared so far (events are sorted by
+        // day, so stop once we pass "now"). Ticks up as the race plays.
+        int towersBeaten = 0;
+        for (Event e : events) {
+            if (e.day > tDay) {
+                break;
+            }
+            if (e.track == leader) {
+                towersBeaten++;
+            }
+        }
+        String counter = towersBeaten + (towersBeaten == 1 ? " tower cleared" : " towers cleared");
+
+        // The avatar slot is always present: the climber's PNG when it
+        // exists, the anonymous-silhouette placeholder otherwise.
+        PImage avatar = avatarFor(leader);
+        float avatarSize = 88f;
+        float avatarWidth = avatarSize + 20f;
+        p.textSize(48);
+        float prefixWidth = p.textWidth(prefix);
+        float titleWidth = p.textWidth(title);
+        p.textSize(36);
+        float tenureWidth = p.textWidth(tenure);
+        float counterWidth = p.textWidth(counter);
+        float contentWidth = prefixWidth + avatarWidth
+                + Math.max(titleWidth, Math.max(tenureWidth, counterWidth));
+
+        // 2DGP-style translucent backing panel (extended to fit the counter line).
+        p.noStroke();
+        p.fill(0, 0, 0, HUD_PANEL_ALPHA);
+        p.rect(x - 18f, y - 12f, x + contentWidth + 18f, y + 150f);
+
+        p.textAlign(Applet.LEFT, Applet.TOP);
+        p.textSize(48);
+        p.fill(0, 0, 100, 100);
+        p.text(prefix, x, y);
+        float nameX = x + prefixWidth;
+
+        if (avatar != null) {
+            p.image(avatar, nameX, y - 6f, avatarSize, avatarSize);
+        } else {
+            drawAvatarPlaceholder(nameX, y - 6f, avatarSize);
+        }
+        nameX += avatarWidth;
+
+        p.textAlign(Applet.LEFT, Applet.TOP);
+        p.textSize(48);
+        p.fill(0, 0, 100, 100);
+        p.text(title, nameX, y);
+
+        p.textSize(36);
+        p.fill(0, 0, 92, 96);
+        p.text(tenure, nameX, y + 58f);
+
+        // Red live tower counter.
+        p.textSize(36);
+        p.fill(0, 82, 100, 100);
+        p.text(counter, nameX, y + 104f);
+    }
+
+    /**
+     * "Unknown climber" mark for tracks without an avatar PNG:
+     * ringed disc, light head-and-shoulders silhouette, "?" on the face.
+     */
+    private void drawAvatarPlaceholder(float x, float y, float size) {
+        Applet p = applet();
+        float cx = x + size / 2f;
+        float cy = y + size / 2f;
+        float d = size - 4f;
+
+        p.noStroke();
+        p.fill(0, 0, 16, 100);
+        p.circle(cx, cy, d);
+
+        p.fill(0, 0, 88, 100);
+        p.circle(cx, cy - size * 0.13f, size * 0.30f);
+        p.arc(cx, cy + size * 0.38f, size * 0.56f, size * 0.50f,
+                (float) Math.PI, (float) (2 * Math.PI));
+
+        p.noFill();
+        p.stroke(0, 0, 92, 100);
+        p.strokeWeight(2.5f);
+        p.circle(cx, cy, d);
+        p.noStroke();
+
+        p.fill(0, 0, 16, 100);
+        p.textFont(font);
+        p.textSize(size * 0.20f);
+        p.textAlign(Applet.CENTER, Applet.CENTER);
+        p.text("?", cx, cy - size * 0.13f);
+    }
+
+    private void drawDateReadout() {
+        Applet p = applet();
+        ensureFont();
+        p.textFont(font);
+
+        double shownDay = Math.min(tDay, endDay);
+        LocalDate date = dayZero.plusDays((long) Math.floor(shownDay));
+        String dateText = DATE_READOUT.format(date);
+        float rightX = halfViewportWidth() - 48f;
+        float topY = -halfViewportHeight() + 24f;
+
+        p.textSize(48);
+        float headingWidth = p.textWidth("Current Date:");
+        p.textSize(41);
+        float dateWidth = p.textWidth(dateText);
+        // The date line is centred under the heading, not right-justified.
+        float headingCenter = rightX - headingWidth / 2f;
+        float panelLeft = Math.min(rightX - headingWidth, headingCenter - dateWidth / 2f) - 18f;
+
+        // 2DGP-style translucent backing panel. The clock recess grows down
+        // FAST (full by drama ~0.1) so the box is already there before the
+        // time text fades in — otherwise the time clipped below a half-grown box.
+        p.noStroke();
+        p.fill(0, 0, 0, HUD_PANEL_ALPHA);
+        float clockRecess = 48f * clamp01F((float) currentDrama * 10f);
+        p.rect(panelLeft, topY - 12f, rightX + 18f, topY + 112f + clockRecess);
+
+        p.textAlign(Applet.RIGHT, Applet.TOP);
+        p.textSize(48);
+        p.fill(0, 0, 100, 100);
+        p.text("Current Date:", rightX, topY);
+        p.textAlign(Applet.CENTER, Applet.TOP);
+        p.textSize(41);
+        p.fill(0, 0, 92, 96);
+        p.text(dateText, headingCenter, topY + 60f);
+
+        // Slow-mo clock: time-of-day, fading in only while bullet-time is
+        // active, so the viewer feels the sim crawl through the hours.
+        // Time text only after the box is fully open (drama > 0.12), so it
+        // never spills past the panel edge. The alpha ramps from 0 at the
+        // gate to full by drama ~0.18 (a short, ~0.06-wide fade): enough to
+        // avoid a hard pop, but reaching solid in nearly every slow-mo so
+        // the readout doesn't sit half-lit through milder flurries.
+        if (currentDrama > 0.12) {
+            double frac = shownDay - Math.floor(shownDay);
+            int totalMin = (int) Math.round(frac * 24 * 60) % (24 * 60);
+            String timeText = String.format(Locale.ENGLISH, "%02d:%02d", totalMin / 60, totalMin % 60);
+            p.textAlign(Applet.CENTER, Applet.TOP);
+            p.textSize(40);
+            p.fill(0, 0, 100, 96f * clamp01F(((float) currentDrama - 0.12f) * 16f));
+            p.text(timeText, headingCenter, topY + 110f);
+        }
+    }
+
+    /**
+     * Optional avatar thumbnails: drop {@code src/data/jtoh/avatars/<name>.png}
+     * into the repo and it shows up next to the head label and in the leader
+     * header. Missing files are simply skipped.
+     */
+    private PImage avatarFor(Track track) {
+        if (!track.avatarChecked) {
+            track.avatarChecked = true;
+            java.nio.file.Path path = java.nio.file.Path.of("src/data/jtoh/avatars",
+                    track.name.toLowerCase(Locale.ROOT) + ".png");
+            if (!Files.exists(path)) {
+                path = java.nio.file.Path.of("src/data/jtoh/avatars", track.name + ".png");
+            }
+            if (Files.exists(path)) {
+                track.avatar = applet().loadImage(path.toString());
+            }
+        }
+        return track.avatar;
+    }
+
+    // ------------------------------------------------------------------
+    // Ledger (right-column feed of recent tower completions)
+    // ------------------------------------------------------------------
+
+    /** Right edge available to the race: the viewport edge minus the ledger
+     *  gutter, so head dots and labels never run under the feed. */
+    private float raceRightEdge() {
+        return halfViewportWidth() - LEDGER_WIDTH;
+    }
+
+    /** Brightened tier colour for a difficulty value — the band's edge colour,
+     *  legible as text where the dark fill colour would not be. */
+    private Color bandEdgeColorFor(double value) {
+        for (ValueBand band : tierBands) {
+            if (value >= band.lo() && value < band.hi()) {
+                return band.edge();
+            }
+        }
+        return tierBands.get(tierBands.size() - 1).edge();
+    }
+
+    /** Admit completions whose time has arrived (newest to the top), then ease
+     *  every entry toward its slot; rows past the cap fade out as they go. */
+    private void updateLedger(double dt) {
+        while (eventCursor < events.size() && events.get(eventCursor).day <= tDay) {
+            Event event = events.get(eventCursor);
+            LedgerEntry entry = new LedgerEntry(event);
+            entry.xOffset = LEDGER_ENTER_SLIDE; // start off the right edge, slide in
+            ledger.add(0, entry);
+            logBeat(event);
+            eventCursor++;
+        }
+        for (int i = 0; i < ledger.size(); i++) {
+            LedgerEntry e = ledger.get(i);
+            float targetY = i * LEDGER_ROW_H;
+            boolean alive = i < LEDGER_MAX_ROWS;
+            if (!e.yInitialised) {
+                e.y = targetY;
+                e.yInitialised = true;
+            } else {
+                e.y = ease(e.y, targetY, dt, LEDGER_Y_EASE);
+            }
+            e.alpha = ease(e.alpha, alive ? 1f : 0f, dt, alive ? LEDGER_FADE_IN : LEDGER_FADE_OUT);
+            e.xOffset = ease(e.xOffset, 0f, dt, LEDGER_ENTER_EASE);
+        }
+        for (int i = ledger.size() - 1; i >= LEDGER_MAX_ROWS; i--) {
+            if (ledger.get(i).alpha < 0.02f) {
+                ledger.remove(i);
+            }
+        }
+    }
+
+    private void drawLedger() {
+        Applet p = applet();
+        ensureFont();
+        p.textFont(font);
+
+        float panelLeft = halfViewportWidth() - LEDGER_WIDTH;
+        float panelRight = halfViewportWidth() - 18f;
+        float top = -halfViewportHeight() + LEDGER_PANEL_TOP;
+        float listTop = top + 40f;
+        float panelBottom = listTop + LEDGER_MAX_ROWS * LEDGER_ROW_H + 6f;
+
+        // Backing panel — darker than the other HUD blocks so colour-coded
+        // text stays legible over whatever band sits behind it.
+        p.noStroke();
+        p.fill(0, 0, 0, LEDGER_PANEL_ALPHA);
+        p.rect(panelLeft, top - 6f, panelRight, panelBottom);
+
+        p.textAlign(Applet.LEFT, Applet.TOP);
+        p.textSize(24);
+        p.fill(0, 0, 70, 82);
+        p.text("RECENT TOWERS", panelLeft + 20f, top + 4f);
+
+        float textX = panelLeft + 20f;
+        float valX = panelRight - 14f;
+        for (int i = 0; i < ledger.size() && i < LEDGER_MAX_ROWS + 2; i++) {
+            LedgerEntry e = ledger.get(i);
+            float cy = listTop + e.y + LEDGER_ROW_H / 2f;
+            if (e.alpha <= 0.01f || cy > panelBottom + LEDGER_ROW_H) {
+                continue;
+            }
+            Color c = bandEdgeColorFor(e.event.difficulty);
+            float h = c.getHue().getValue();
+            float s = Math.min(c.getSaturation().getValue(), LEDGER_TEXT_MAX_SAT);
+            float b = Math.max(c.getBrightness().getValue(), LEDGER_TEXT_MIN_BRI);
+            String label = e.event.track.name + " beat " + e.event.code;
+            String val = String.format(Locale.ENGLISH, "%.2f", e.event.difficulty);
+            p.textAlign(Applet.LEFT, Applet.CENTER);
+            p.textSize(LEDGER_TEXT_SIZE);
+            p.fill(0, 0, 0, 60f * e.alpha);
+            p.text(label, textX + e.xOffset + 1.5f, cy + 1.5f);
+            p.fill(h, s, b, 100f * e.alpha);
+            p.text(label, textX + e.xOffset, cy);
+            p.textAlign(Applet.RIGHT, Applet.CENTER);
+            p.fill(0, 0, 0, 60f * e.alpha);
+            p.text(val, valX + e.xOffset + 1.5f, cy + 1.5f);
+            p.fill(h, s, b, 100f * e.alpha);
+            p.text(val, valX + e.xOffset, cy);
+        }
+    }
+
+    private void strokeTrack(Track track, float alpha) {
+        Color c = track.color;
+        p.stroke(c.getHue().getValue(), c.getSaturation().getValue(),
+                c.getBrightness().getValue(), alpha);
+    }
+
+    private void fillTrack(Track track, float alpha) {
+        Color c = track.color;
+        p.fill(c.getHue().getValue(), c.getSaturation().getValue(),
+                c.getBrightness().getValue(), alpha);
+    }
+
+    private void ensureFont() {
+        if (font == null) {
+            // The reference look is Lato; Main loads the bundled TTFs as
+            // shared fonts, so the installed-face scan is only a fallback for
+            // running the scene without Main's setup.
+            PFont latoBold = applet().getLatoBoldFont();
+            PFont lato = applet().getLatoFont();
+            font = latoBold != null ? latoBold : applet().createFont(pickFontFace(
+                    "Lato Bold", "Lato", "Helvetica Neue Bold", "HelveticaNeue-Bold",
+                    "Arial Bold", "DejaVu Sans Bold", "Verdana Bold"), 150, true);
+            grid.setLabelFont(lato != null ? lato : applet().createFont(pickFontFace(
+                    "Lato", "Helvetica Neue", "Arial", "DejaVu Sans", "Verdana"), 150, true));
+        }
+    }
+
+    /** First installed font face/family from the preference list, else logical SansSerif. */
+    private static String pickFontFace(String... preferred) {
+        java.util.Set<String> available = new java.util.HashSet<>();
+        for (java.awt.Font installed
+                : java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getAllFonts()) {
+            available.add(installed.getFontName(Locale.ENGLISH).toLowerCase(Locale.ROOT));
+            available.add(installed.getFamily(Locale.ENGLISH).toLowerCase(Locale.ROOT));
+        }
+        for (String candidate : preferred) {
+            if (available.contains(candidate.toLowerCase(Locale.ROOT))) {
+                return candidate;
+            }
+        }
+        return "SansSerif";
+    }
+
+    // ------------------------------------------------------------------
+    // Data loading
+    // ------------------------------------------------------------------
+
+    /**
+     * The JToH difficulty tiers (ratings 1..13: Easy .. Unreal), as dark
+     * backdrop tints + brighter edges. Official chart colours from the JToH
+     * wiki. Each tier spans one rating unit; the band's lower bound is the
+     * tier's threshold (Medium starts at 2, Hard at 3, ...).
+     */
+    private static List<ValueBand> buildTierBands() {
+        // Easy starts at 0 (below 0 stays black, no band). The top "nil" tier is
+        // open-ended so its fill reaches the plot edge when the y-window adds
+        // headroom above the named tiers.
+        Object[][] tiers = {
+                {"Easy", "#5b9a4c", 0.0, 2.0},
+                {"Medium", "#ffb000", 2.0, 3.0},
+                {"Hard", "#aa5500", 3.0, 4.0},
+                {"Difficult", "#c4281c", 4.0, 5.0},
+                {"Challenging", "#750000", 5.0, 6.0},
+                {"Intense", "#1b2a35", 6.0, 7.0},
+                {"Remorseless", "#ff00bf", 7.0, 8.0},
+                {"Insane", "#0000ff", 8.0, 9.0},
+                {"Extreme", "#2154b9", 9.0, 10.0},
+                {"Terrifying", "#00ffff", 10.0, 11.0},
+                {"Catastrophic", "#ffffff", 11.0, 12.0},
+                {"Horrific", "#a75e9b", 12.0, 13.0},
+                {"Unreal", "#7b007b", 13.0, 14.0},
+                {"nil", "#65666d", 14.0, 1.0e6},
+        };
+        List<ValueBand> bands = new ArrayList<>();
+        for (int i = 0; i < tiers.length; i++) {
+            String label = (String) tiers[i][0];
+            Color base = Color.fromCss((String) tiers[i][1]);
+            double lo = (Double) tiers[i][2];
+            double hi = (Double) tiers[i][3];
+            float h = base.getHue().getValue();
+            float s = base.getSaturation().getValue();
+            float b = base.getBrightness().getValue();
+            // Gentle brightness ramp up the stack keeps the colours legible as
+            // backdrops (and nudges near-black Intense / the two blues apart)
+            // without shouting over the lines.
+            float fillBri = Math.min(54f, 30f + i * 2.4f);
+            Color fill = new Color(h, s * 0.9f, fillBri, 42f);
+            Color edge = new Color(h, s, Math.min(100f, b + 36f), 58f);
+            bands.add(new ValueBand(lo, hi, fill, edge, label));
+        }
+        return bands;
+    }
+
+    /**
+     * Read the completions CSV ({@code player,color,datetime,code,difficulty})
+     * and build one PR-progression track per player plus the global event feed.
+     * Each track's line is the PCHIP of that player's PR knots (the running max
+     * of difficulty), flattened out to the global end date; the ledger uses
+     * every completion.
+     */
+    private static Loaded loadData(String path) {
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(Path.of(path));
+        } catch (IOException e) {
+            throw new UncheckedIOException(
+                    "Could not read " + path + " — run tools/generate_jtoh_pr_data.py "
+                            + "from the repo root first", e);
+        }
+
+        List<String> rowPlayer = new ArrayList<>();
+        List<LocalDateTime> rowWhen = new ArrayList<>();
+        List<String> rowCode = new ArrayList<>();
+        List<Double> rowValue = new ArrayList<>();
+        Map<String, String> colorOf = new LinkedHashMap<>();
+        Map<String, String> modeOf = new LinkedHashMap<>();
+        for (int i = 1; i < lines.size(); i++) {
+            String line = lines.get(i).trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            String[] parts = line.split(",");
+            if (parts.length < 6) {
+                throw new IllegalStateException(path + " line " + (i + 1) + " is malformed: " + line);
+            }
+            colorOf.putIfAbsent(parts[0], parts[1]);
+            modeOf.putIfAbsent(parts[0], parts[2]);
+            rowPlayer.add(parts[0]);
+            rowWhen.add(LocalDateTime.parse(parts[3]));
+            rowCode.add(parts[4]);
+            rowValue.add(Double.parseDouble(parts[5]));
+        }
+        if (rowWhen.isEmpty()) {
+            throw new IllegalStateException(
+                    "No completions in " + path + " — run tools/generate_jtoh_pr_data.py first");
+        }
+
+        LocalDate dayZero = rowWhen.get(0).toLocalDate();
+        for (LocalDateTime when : rowWhen) {
+            if (when.toLocalDate().isBefore(dayZero)) {
+                dayZero = when.toLocalDate();
+            }
+        }
+        dayZero = dayZero.minusDays(INTRO_LEAD_DAYS);
+        LocalDateTime base = dayZero.atStartOfDay();
+        double[] day = new double[rowWhen.size()];
+        double endDay = 0;
+        for (int i = 0; i < rowWhen.size(); i++) {
+            day[i] = Duration.between(base, rowWhen.get(i)).toMillis() / 86_400_000.0;
+            endDay = Math.max(endDay, day[i]);
+        }
+
+        Map<String, List<Integer>> rowsByPlayer = new LinkedHashMap<>();
+        for (int i = 0; i < rowPlayer.size(); i++) {
+            rowsByPlayer.computeIfAbsent(rowPlayer.get(i), k -> new ArrayList<>()).add(i);
+        }
+
+        Map<String, Track> trackOf = new LinkedHashMap<>();
+        List<Track> tracks = new ArrayList<>();
+        for (Map.Entry<String, List<Integer>> entry : rowsByPlayer.entrySet()) {
+            String player = entry.getKey();
+            List<Integer> idx = entry.getValue();
+            idx.sort(Comparator.comparingDouble(i -> day[i]));
+            boolean lineMode = "line".equals(modeOf.get(player));
+            List<double[]> knots = new ArrayList<>();
+            double lastDay = Double.NEGATIVE_INFINITY;
+            double lastValue = 0;
+            if (lineMode) {
+                // Explicit line: plot the rows directly, no running-max filter.
+                for (int i : idx) {
+                    double d = day[i];
+                    if (!knots.isEmpty() && d <= lastDay) {
+                        d = lastDay + 1e-4; // PCHIP needs strictly increasing x
+                    }
+                    knots.add(new double[]{d, rowValue.get(i)});
+                    lastDay = d;
+                    lastValue = rowValue.get(i);
+                }
+            } else {
+                // PR knots = the running-max-of-difficulty subsequence.
+                double max = Double.NEGATIVE_INFINITY;
+                for (int i : idx) {
+                    double v = rowValue.get(i);
+                    if (v > max + 1e-9) {
+                        double d = day[i];
+                        if (!knots.isEmpty() && d <= lastDay) {
+                            d = lastDay + 1e-4;
+                        }
+                        knots.add(new double[]{d, v});
+                        max = v;
+                        lastDay = d;
+                        lastValue = v;
+                    }
+                }
+            }
+            // Flatten the tail: PR tracks hold their final value out to the
+            // global end date. Line-mode tracks (e.g. Lintahlo) instead retire
+            // at their last authored knot, so the existing CS2-style fade kicks
+            // in — the label leaves and the line dims but stays drawn.
+            if (!lineMode && endDay > lastDay + 1e-6) {
+                knots.add(new double[]{endDay, lastValue});
+            } else if (knots.size() < 2) {
+                knots.add(new double[]{lastDay + 1.0, lastValue});
+            }
+            double[] kd = new double[knots.size()];
+            double[] kv = new double[knots.size()];
+            for (int j = 0; j < knots.size(); j++) {
+                kd[j] = knots.get(j)[0];
+                kv[j] = knots.get(j)[1];
+            }
+            Track track = new Track(player, Color.fromCss(colorOf.get(player)), kd, kv, lineMode);
+            trackOf.put(player, track);
+            tracks.add(track);
+        }
+
+        List<Event> events = new ArrayList<>(rowPlayer.size());
+        for (int i = 0; i < rowPlayer.size(); i++) {
+            if ("line".equals(modeOf.get(rowPlayer.get(i)))) {
+                continue; // line-mode players raise no ledger events
+            }
+            events.add(new Event(day[i], trackOf.get(rowPlayer.get(i)),
+                    rowCode.get(i), rowValue.get(i)));
+        }
+        events.sort(Comparator.comparingDouble(e -> e.day));
+
+        return new Loaded(tracks, events, dayZero, endDay);
+    }
+
+    private static double readMsPerDay() {
+        String raw = System.getProperty("msPerDay", "").trim();
+        if (raw.isEmpty()) {
+            return DEFAULT_MS_PER_DAY;
+        }
+        double parsed = Double.parseDouble(raw);
+        if (parsed <= 0) {
+            throw new IllegalArgumentException("msPerDay must be positive: " + raw);
+        }
+        return parsed;
+    }
+
+    /** A -D{key} double override, or {@code def} if unset/blank/unparseable.
+     *  Lets the bullet-time knobs be tuned per-render without recompiling. */
+    private static double prop(String key, double def) {
+        String raw = System.getProperty(key, "").trim();
+        if (raw.isEmpty()) {
+            return def;
+        }
+        try {
+            return Double.parseDouble(raw);
+        } catch (NumberFormatException e) {
+            return def;
+        }
+    }
+
+    /** Decay a sample's framing influence toward the recent range by age. */
+    private static double ageDiscounted(double value, double age,
+                                        double recentMin, double recentMax, double strength) {
+        if (strength <= 0 || age <= Y_FIT_RECENT_DAYS) {
+            return value;
+        }
+        double weight = 1.0 - strength
+                * (1.0 - Math.exp(-(age - Y_FIT_RECENT_DAYS) / Y_FIT_AGE_DECAY_DAYS));
+        if (value > recentMax) {
+            return recentMax + (value - recentMax) * weight;
+        }
+        if (value < recentMin) {
+            return recentMin + (value - recentMin) * weight;
+        }
+        return value;
+    }
+
+    // ------------------------------------------------------------------
+    // Small math helpers
+    // ------------------------------------------------------------------
+
+    private static float ease(float current, float target, double dt, float rate) {
+        return current + (target - current) * (1f - (float) Math.exp(-rate * dt));
+    }
+
+    private static double ease(double current, double target, double dt, float rate) {
+        return current + (target - current) * (1.0 - Math.exp(-rate * dt));
+    }
+
+    private static double interpolate(double start, double end, double progress) {
+        return start + (end - start) * progress;
+    }
+
+    private static double clamp01(double value) {
+        return Math.max(0, Math.min(1, value));
+    }
+
+    private static float clamp01F(float value) {
+        return Math.max(0f, Math.min(1f, value));
+    }
+
+    private static float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static double smoothstep(double value) {
+        return value * value * (3 - 2 * value);
+    }
+
+    private static final class Loaded {
+        private final List<Track> tracks;
+        private final List<Event> events;
+        private final LocalDate dayZero;
+        private final double endDay;
+
+        private Loaded(List<Track> tracks, List<Event> events,
+                       LocalDate dayZero, double endDay) {
+            this.tracks = tracks;
+            this.events = events;
+            this.dayZero = dayZero;
+            this.endDay = endDay;
+        }
+    }
+
+    /** One tower completion — a ledger event. */
+    private static final class Event {
+        private final double day;
+        private final Track track;
+        private final String code;
+        private final double difficulty;
+
+        private Event(double day, Track track, String code, double difficulty) {
+            this.day = day;
+            this.track = track;
+            this.code = code;
+            this.difficulty = difficulty;
+        }
+    }
+
+    /** A live row in the ledger feed: eased slot position + fade. */
+    private static final class LedgerEntry {
+        private final Event event;
+        private float y;
+        private float alpha;
+        private float xOffset;
+        private boolean yInitialised;
+
+        private LedgerEntry(Event event) {
+            this.event = event;
+        }
+    }
+
+    /** One player's PR-progression line: a PCHIP through their PR knots. */
+    private static final class Track {
+        private final String name;
+        private final Color color;
+        private final Pchip spline;
+        private final double firstDay;
+        private final double lastDay;
+        private final boolean lineMode;
+
+        private float labelY;
+        private float labelTargetY;
+        private float labelDotY;
+        private float labelOffset;
+        private float labelHeadX;
+        private float labelAlpha;
+        private boolean labelInitialised;
+        private double lastQueueSwapSeconds = Double.NEGATIVE_INFINITY;
+        private float strokeBoost;
+        private PImage avatar;
+        private boolean avatarChecked;
+
+        private Track(String name, Color color, double[] knotDays, double[] knotValues,
+                      boolean lineMode) {
+            if (knotDays.length < 2) {
+                throw new IllegalStateException("Track " + name + " needs at least two knots");
+            }
+            this.name = name;
+            this.color = color;
+            this.spline = new Pchip(knotDays, knotValues);
+            this.firstDay = knotDays[0];
+            this.lastDay = knotDays[knotDays.length - 1];
+            this.lineMode = lineMode;
+        }
+
+        private boolean isActiveAt(double day) {
+            return day >= firstDay && day <= lastDay + RANK_GRACE_DAYS;
+        }
+    }
+}

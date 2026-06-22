@@ -39,6 +39,10 @@ public final class DataGrid {
     private static final double EPSILON = 1e-6;
     private static final float LABEL_BAND_GAP = 14f;
     private static final float SLIM_RAIL_PADDING = 16f;
+    /** Only labels at least this faded-in size the slim rail. Faint, transient
+     *  edge labels (e.g. a negative minor tick dipping into view) must not widen
+     *  the rail and shove the whole axis sideways mid-race. */
+    private static final float SLIM_RAIL_LABEL_MIN_ALPHA = 0.6f;
     private static final double[] NICE_STEP_MULTIPLIERS = {1.0, 2.0, 5.0};
 
     private static final float ALPHA_EPSILON = 0.02f;
@@ -71,6 +75,12 @@ public final class DataGrid {
      *  fraction of the base gap), so both leave together and the leftmost
      *  date does not hang around half-faded for seconds. */
     private static final float X_LABEL_EXIT_FADE_FRACTION = 0.45f;
+    /** Cap on the exit-fade ramp, as a fraction of the plot. The major step is
+     *  fixed (a quarter in calendar mode), so at deep zoom the raw ramp can
+     *  dwarf the plot and dim every label/gridline at once — this keeps it a
+     *  local edge effect. Sits above the ~0.11 ramp at the normal 1-year
+     *  window, so ordinary zooms are unaffected. */
+    private static final float X_LABEL_EXIT_FADE_MAX_FRACTION = 0.12f;
     /** Horizontal gridlines and y labels overshoot the plot bottom by this
      *  much and dissolve, instead of popping out at the boundary. */
     private static final float BOTTOM_GRID_OVERSCAN_PX = 30f;
@@ -103,6 +113,15 @@ public final class DataGrid {
     private float plotHeight;
     private float viewportLeft;
     private float currentCollapseProgress;
+    /** Eased slim-rail width: the raw width jumps when the widest visible
+     *  y-label gains/loses a character (a negative or extra-digit tick entering
+     *  the window), which bumped the whole label column — easing slides it. */
+    private float easedSlimRailWidth = -1f;
+    private static final float RAIL_EASE_RATE = 7f;
+    /** Widest labels the y-axis will ever show across the whole animation,
+     *  declared by the scene; the rail reserves their width so it never juts
+     *  sideways when the live tick labels change width. */
+    private String[] slimRailReserveLabels;
 
     private double xMin = 0;
     private double xMax = 24;
@@ -131,6 +150,10 @@ public final class DataGrid {
     private float axisStroke = 5f;
     private float majorGridStroke = 2.75f;
     private float minorGridStroke = 1.5f;
+    /** Extra opacity for MINOR gridlines (0 = default). Scales by how minor a line
+     *  is, so majors are untouched — lets a scene with busy coloured backdrops
+     *  (the JToH tier bands) keep its minors legible without restyling every grid. */
+    private float minorGridBoost = 0f;
     private float majorLabelSize = 34f;
     private float minorLabelSize = 27f;
     private float xLabelInset = 40f;
@@ -185,7 +208,12 @@ public final class DataGrid {
                         topGridOverscan, yLabelFormatter, yLabelFadeStates, yGridFadeStates);
 
         currentCollapseProgress = railCollapseProgress();
-        float currentLeftRailWidth = interpolate(leftInset, slimRailWidth(yTicks), currentCollapseProgress);
+        float targetSlimRail = slimRailWidth(yTicks);
+        easedSlimRailWidth = easedSlimRailWidth < 0f
+                ? targetSlimRail
+                : easedSlimRailWidth + (targetSlimRail - easedSlimRailWidth)
+                        * (1f - (float) Math.exp(-RAIL_EASE_RATE * labelFadeDt));
+        float currentLeftRailWidth = interpolate(leftInset, easedSlimRailWidth, currentCollapseProgress);
         plotLeft = viewportLeft + currentLeftRailWidth;
         plotWidth = p.width - currentLeftRailWidth - rightInset;
         if (plotWidth <= 0) {
@@ -270,9 +298,11 @@ public final class DataGrid {
 
     /**
      * Switch the x axis to calendar mode: x values become days since
-     * {@code dayZero}, gridlines/labels sit on month, quarter (Jan 1, Apr 1,
-     * Jul 1, Oct 1) and year boundaries, and fade between granularities with
-     * zoom. Also sets the x major step to an average quarter so the moving
+     * {@code dayZero}, gridlines/labels sit on day, week (1/8/15/22), month,
+     * quarter (Jan 1, Apr 1, Jul 1, Oct 1) and year boundaries, and fade
+     * between granularities with zoom. The sub-month levels only surface when
+     * the window is zoomed in far (e.g. the JToH burst dive-in). Also sets the
+     * x major step to an average quarter so the moving
      * left-rail math keeps working.
      */
     public void setXCalendarAxis(LocalDate dayZero) {
@@ -300,6 +330,16 @@ public final class DataGrid {
         this.font = Objects.requireNonNull(labelFont, "labelFont");
     }
 
+    /** Override the default axis label sizes (major = full-strength labels,
+     *  minor = the faded next-family labels mid-crossfade). */
+    public void setLabelSizes(float majorLabelSize, float minorLabelSize) {
+        if (majorLabelSize <= 0f || minorLabelSize <= 0f) {
+            throw new IllegalArgumentException("Label sizes must be positive");
+        }
+        this.majorLabelSize = majorLabelSize;
+        this.minorLabelSize = minorLabelSize;
+    }
+
     /**
      * Animation time step for the label crossfades, in seconds. Scenes on a
      * fixed-timestep clock should pass their dt every frame so fades stay
@@ -319,6 +359,16 @@ public final class DataGrid {
         this.bottomInset = bottomInset;
     }
 
+    /** Gap from the plot edge to the axis labels (x = below the plot, y = left
+     *  of it). Larger values push the numbers further out from the gridlines. */
+    public void setLabelInsets(float xLabelInset, float yLabelInset) {
+        if (xLabelInset < 0f || yLabelInset < 0f) {
+            throw new IllegalArgumentException("Label insets must be non-negative");
+        }
+        this.xLabelInset = xLabelInset;
+        this.yLabelInset = yLabelInset;
+    }
+
     public void setXLabelFormatter(DoubleFunction<String> formatter) {
         this.xLabelFormatter = Objects.requireNonNull(formatter, "formatter");
     }
@@ -327,8 +377,24 @@ public final class DataGrid {
         this.yLabelFormatter = Objects.requireNonNull(formatter, "formatter");
     }
 
+    /**
+     * Reserve the y-axis label rail for the widest labels the axis will ever
+     * show, so the plot's left edge holds still instead of jutting sideways
+     * when a live label gains a digit ("8" -> "10") or a line dips to a negative
+     * tick. Pass the worst-case labels (e.g. the formatted global min and max).
+     */
+    public void setYLabelReserve(String... labels) {
+        this.slimRailReserveLabels = labels;
+    }
+
     public void showMinorGrid(boolean showMinorGrid) {
         this.showMinorGrid = showMinorGrid;
+    }
+
+    /** Extra minor-gridline opacity (0 = default). Useful when busy coloured
+     *  backdrops wash the minors out; majors are left as designed. */
+    public void setMinorGridBoost(float minorGridBoost) {
+        this.minorGridBoost = Math.max(0f, minorGridBoost);
     }
 
     public void showLabels(boolean showLabels) {
@@ -801,10 +867,15 @@ public final class DataGrid {
         return state[0];
     }
 
-    // Full reference-style date labels: "Dec 1, 2013", "Mar 1, 2014", ...
+    // Reference-style date labels. The year shows ONLY on month-boundary dates
+    // (the 1st), so a tick's text is identical whether it is drawn as a week tick
+    // or a month tick — it never flips ("Oct 1, 2024" <-> "Oct 1") when the band
+    // crosses the week/month zoom boundary. Pure week ticks (8th/15th/22nd) stay
+    // bare and simply fade in and out by alpha.
     private static String calendarLabel(LocalDate date) {
-        String month = date.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
-        return month + " " + date.getDayOfMonth() + ", " + date.getYear();
+        String dayLabel = date.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH)
+                + " " + date.getDayOfMonth();
+        return date.getDayOfMonth() == 1 ? dayLabel + ", " + date.getYear() : dayLabel;
     }
 
     private float yLabelExtentPx() {
@@ -833,6 +904,7 @@ public final class DataGrid {
 
     private float maxCalendarLabelWidth(double low, double high, CalendarFamily family) {
         float maxWidth = 1f;
+        boolean subMonth = family.averageDays < CalendarFamily.MONTH.averageDays;
         LocalDate date = family.firstBoundaryOnOrAfter(
                 xCalendarDayZero.plusDays((long) Math.floor(low)));
         while (true) {
@@ -840,7 +912,12 @@ public final class DataGrid {
             if (day > high + EPSILON) {
                 break;
             }
-            maxWidth = Math.max(maxWidth, p.textWidth(calendarLabel(date)));
+            // Sub-month families: skip the wide month-boundary label (it carries
+            // the year); the typical bare week/day label sets the cadence and the
+            // rare month boundary has a full cell of room around it.
+            if (!(subMonth && date.getDayOfMonth() == 1)) {
+                maxWidth = Math.max(maxWidth, p.textWidth(calendarLabel(date)));
+            }
             date = family.next(date);
         }
         return maxWidth;
@@ -868,7 +945,7 @@ public final class DataGrid {
         float plotRight = plotLeft + plotWidth;
         // Same exit window as the x labels, so a line and its label leave
         // together instead of the line dimming first.
-        float fadeWidthPx = xBaseGapWidthPx() * X_LABEL_EXIT_FADE_FRACTION;
+        float fadeWidthPx = xExitFadeWidthPx();
         // While the world y-axis line is visible, gridlines beside it are
         // suppressed — a tick a couple of days from the anchor (Jan 1 next
         // to a Dec 30 day-zero) otherwise peeks out as a grey sliver along
@@ -949,6 +1026,8 @@ public final class DataGrid {
         p.strokeWeight(interpolate(minorGridStroke, majorGridStroke, t));
         float brightness = interpolate(34f, 46f, t);
         float alpha = interpolate(28f, 44f, t) * clamp01(t / 0.3f) * extraFade;
+        // Lift minors (low t) by minorGridBoost; majors (t≈1) stay as designed.
+        alpha *= 1f + (1f - t) * minorGridBoost;
         p.stroke(0, 0, brightness, alpha);
     }
 
@@ -1105,7 +1184,7 @@ public final class DataGrid {
     private void drawXLabels(List<Tick> ticks) {
         float labelY = plotTop + plotHeight + xLabelInset;
         float plotRight = plotLeft + plotWidth;
-        float fadeWidthPx = xBaseGapWidthPx() * X_LABEL_EXIT_FADE_FRACTION;
+        float fadeWidthPx = xExitFadeWidthPx();
 
         p.textAlign(Applet.CENTER, Applet.CENTER);
         for (Tick tick : ticks) {
@@ -1170,6 +1249,13 @@ public final class DataGrid {
         return Math.max(1f, (float) (plotWidth * (xMajorStep / (xMax - xMin))));
     }
 
+    /** Exit-fade ramp width, capped so it stays a local left-edge effect even
+     *  when zoomed far below the (quarter) major-step cadence. */
+    private float xExitFadeWidthPx() {
+        return Math.min(xBaseGapWidthPx() * X_LABEL_EXIT_FADE_FRACTION,
+                plotWidth * X_LABEL_EXIT_FADE_MAX_FRACTION);
+    }
+
     private float railCollapseProgress() {
         if (xMajorStep <= EPSILON) {
             return 0f;
@@ -1191,16 +1277,37 @@ public final class DataGrid {
         ensureFont();
         p.textFont(font);
 
+        // A scene that declares a reserve (setYLabelReserve) gets a STABLE rail:
+        // it is pre-sized to the widest label the axis will ever show, faint
+        // transient labels are ignored, and widths are measured at a fixed major
+        // size — so the rail never juts mid-race when a label gains a digit
+        // ("8" -> "10") or a line dips to a negative tick. Scenes that declare no
+        // reserve keep the original adaptive behaviour (count any drawn label at
+        // its live crossfade size), so this change cannot affect them.
+        boolean reserved = slimRailReserveLabels != null;
         float maxLabelWidth = 0f;
+        if (reserved) {
+            p.textSize(majorLabelSize);
+            for (String s : slimRailReserveLabels) {
+                if (s != null) {
+                    maxLabelWidth = Math.max(maxLabelWidth, p.textWidth(s));
+                }
+            }
+        }
         for (Tick tick : yTicks) {
-            if (tick.labelAlpha <= ALPHA_EPSILON) {
+            boolean skip = reserved
+                    ? tick.labelAlpha < SLIM_RAIL_LABEL_MIN_ALPHA
+                    : tick.labelAlpha <= ALPHA_EPSILON;
+            if (skip) {
                 continue;
             }
             float y = domainToCanvasY(tick.value);
             if (y < plotTop - topGridOverscan - 1f || y > plotTop + plotHeight + 1f) {
                 continue;
             }
-            p.textSize(interpolate(minorLabelSize, majorLabelSize, tick.labelAlpha));
+            p.textSize(reserved
+                    ? majorLabelSize
+                    : interpolate(minorLabelSize, majorLabelSize, tick.labelAlpha));
             maxLabelWidth = Math.max(maxLabelWidth, p.textWidth(tick.label));
         }
         return Math.max(minRailWidth, maxLabelWidth + yLabelInset + SLIM_RAIL_PADDING);
@@ -1396,6 +1503,54 @@ public final class DataGrid {
     }
 
     private enum CalendarFamily {
+        DAY(1.0) {
+            @Override
+            LocalDate firstBoundaryOnOrAfter(LocalDate date) {
+                return date;
+            }
+
+            @Override
+            LocalDate next(LocalDate date) {
+                return date.plusDays(1);
+            }
+        },
+        WEEK(7.61) {
+            // Week boundaries reset each month (1st, 8th, 15th, 22nd) so they
+            // stay aligned to the month grid; the final "week" is the ~9-day
+            // remainder up to the next 1st.
+            @Override
+            LocalDate firstBoundaryOnOrAfter(LocalDate date) {
+                int d = date.getDayOfMonth();
+                if (d == 1 || d == 8 || d == 15 || d == 22) {
+                    return date;
+                }
+                if (d < 8) {
+                    return date.withDayOfMonth(8);
+                }
+                if (d < 15) {
+                    return date.withDayOfMonth(15);
+                }
+                if (d < 22) {
+                    return date.withDayOfMonth(22);
+                }
+                return date.plusMonths(1).withDayOfMonth(1);
+            }
+
+            @Override
+            LocalDate next(LocalDate date) {
+                int d = date.getDayOfMonth();
+                if (d < 8) {
+                    return date.withDayOfMonth(8);
+                }
+                if (d < 15) {
+                    return date.withDayOfMonth(15);
+                }
+                if (d < 22) {
+                    return date.withDayOfMonth(22);
+                }
+                return date.plusMonths(1).withDayOfMonth(1);
+            }
+        },
         MONTH(30.44) {
             @Override
             LocalDate firstBoundaryOnOrAfter(LocalDate date) {

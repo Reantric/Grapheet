@@ -269,6 +269,10 @@ public final class FfmpegRecorder {
         command.add(preset);
         command.add("-crf");
         command.add(Integer.toString(crf));
+        // Relocate the moov atom to the front so QuickTime Player, Finder
+        // preview, and web players can open the file without reading to the end.
+        command.add("-movflags");
+        command.add("+faststart");
         command.add(outputFilePath);
         return command;
     }
