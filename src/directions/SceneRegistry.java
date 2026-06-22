@@ -3,11 +3,8 @@ package directions;
 import core.Applet;
 import directions.engine.Director;
 import directions.engine.Scene;
-import directions.scenes.TaylorsScene;
-import directions.scenes.TexScene;
 
 import java.lang.reflect.InvocationTargetException;
-import java.util.Locale;
 
 public final class SceneRegistry {
     private SceneRegistry() {
@@ -25,20 +22,11 @@ public final class SceneRegistry {
         if (!sceneClassName.isEmpty()) {
             return createSceneClass(applet, sceneClassName);
         }
-        return createScene(applet, System.getProperty("scene", "TaylorsScene"));
-    }
-
-    private static Scene createScene(Applet applet, String sceneName) {
-        String normalized = normalize(sceneName);
-        if (normalized.isEmpty() || normalized.equals("taylorsscene")) {
-            return new TaylorsScene(applet);
+        String sceneName = System.getProperty("scene", "JtohDifficultyScene").trim();
+        if (sceneName.isEmpty()) {
+            sceneName = "JtohDifficultyScene";
         }
-        if (normalized.equals("texscene")) {
-            return new TexScene(applet);
-        }
-        throw new IllegalArgumentException(
-                "Unknown scene '" + sceneName + "'. Available scenes: TaylorsScene, TexScene"
-        );
+        return createSceneClass(applet, sceneName);
     }
 
     private static Scene createSceneClass(Applet applet, String sceneClassName) {
@@ -83,12 +71,5 @@ public final class SceneRegistry {
                     e
             );
         }
-    }
-
-    private static String normalize(String sceneName) {
-        return sceneName == null ? "" : sceneName
-                .trim()
-                .toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9]", "");
     }
 }
