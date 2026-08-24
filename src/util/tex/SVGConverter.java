@@ -99,8 +99,6 @@ public class SVGConverter {
         }
 
         try {
-            System.out.println("transcoding "
-                    + inSVG);
             TranscoderInput input = new TranscoderInput(new FileInputStream(inSVG));
             OutputStream os = new FileOutputStream(out);
             TranscoderOutput output = new TranscoderOutput(os);
@@ -109,9 +107,7 @@ public class SVGConverter {
             os.flush();
             os.close();
         } catch (Exception e) {
-            System.out.println(
-                    "Problem when exporting " + inSVG + " to " + out + "!\n" + e.toString());
-            throw new RuntimeException(e);
+            throw new RuntimeException("Failed to export " + inSVG + " to " + out, e);
         }
         return true;
     }

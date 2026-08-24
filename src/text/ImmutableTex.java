@@ -166,7 +166,6 @@ public class ImmutableTex {
         float width = PApplet.map(tex.get(endingInd).getPos().x,bbox.getBoundingWidth(0).y,bbox.getBoundingWidth(tex.size()-1).y,0,latex.getWidth());
         float heightDown  = PApplet.map(tex.get(endingInd).getPos().y,0,bbox.getBoundingHeight(tex.size()-1).y,0,latex.getHeight()); // idk why i gotta do this but TODO fix
         float heightUp  = PApplet.map(tex.get(endingInd).getPos().x,0,bbox.getBoundingHeight(tex.size()-1).y,0,latex.getHeight());
-        //p.println(latex.getWidth(),latex.getHeight(), width,height);
         p.rect(x,y+heightUp,x+width*scale.x + 25,y+heightDown*scale.y + 25); // leftmost corner, ??
         //p.rect(x - dim.x/2, y+height + 5,x + width + 20, y+dim.y/2 + 15); // justified left bottom, fix later if need be (god this is pain)
     }

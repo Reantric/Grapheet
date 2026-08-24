@@ -313,10 +313,18 @@ This file is the handoff context for future Codex sessions. Read it before start
   next-family ticks are visible mid-crossfade by design.
 
 ## Recommended Next Steps
-1. Reduce debug printing left in unrelated utilities, especially SVG code and any remaining exploratory logging.
-2. Build new scenes directly under `src/directions/scenes/`.
-3. Remove more legacy animation state from `Graph`, `Grid`, and related classes where it still leaks into scene usage.
-4. Investigate whether `P2D` can be made reliable on Linux, or keep `JAVA2D` as a supported fallback.
+1. Build new scenes directly under `src/directions/scenes/`.
+2. Remove more legacy animation state from `Graph`, `Grid`, and related classes where it still leaks into scene usage.
+3. Investigate whether `P2D` can be made reliable on Linux, or keep `JAVA2D` as a supported fallback.
+
+The old "reduce debug printing" step is done (Aug 2026): `SVGConverter` no
+longer prints "transcoding <file>" per TeX transcode and folds the failure
+context into the thrown `RuntimeException` instead of printing it first.
+Everything that still prints is intentional: `Main` / `VerifyProcessing` /
+`FfmpegRecorder` operational messages, the JToH beat-log (a file writer, not
+console), and vendored upstream code in `src/processing/svg/PGraphicsSVG.java`
+(its "debug prints" are inside commented-out upstream blocks — left as-is to
+keep the vendored diff small).
 
 ## Working Commands
 - Compile:
