@@ -44,6 +44,16 @@ This file is the handoff context for future Codex sessions. Read it before start
   - `export PATH=/opt/homebrew/opt/openjdk@21/bin:$PATH`
 - `timeout 20s ./gradlew runTestScene --console=plain -Drenderer=JAVA2D -Dfullscreen=false` now reaches the timeout without emitting a renderer exception on the updated `DataGrid` path, but the chart motion still needs a human visual pass.
 - On macOS, exporting from a sandboxed shell (no WindowServer access) yields a perfectly-timed but ALL-BLACK video: the sketch and recorder run fine, the hidden AWT surface just never paints. Run exports from a normal user shell.
+- Full Mac end-to-end verification (2026-08-24, M1 Pro, JDK 21.0.10, ffmpeg 8.1.1):
+  all three scenes ran windowed to completion (`run<Scene> -Dfullscreen=false
+  -DmsPerDay=40 -DholdOnFinish=false`), and `exportJtohDifficultyScene` produced
+  a good 1080p preview and a 3840x2160 `-DpixelDensity=2 -DffmpegPreset=medium`
+  final (3:17 timeline; ~19 min render wall time), frames spot-checked across
+  the timeline.
+- Realtime `run<Scene>` RECORDINGS come out time-compressed when the windowed
+  sketch renders under the stamped 60fps (e.g. the 40ms/day CS2 pass produced a
+  59s file for a ~140s timeline). The live window pacing is correct; use the
+  export tasks when the mp4 itself matters.
 
 ## Build / Tooling Notes
 - `build.gradle` now targets Java 21 instead of Java 25.
