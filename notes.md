@@ -314,8 +314,12 @@ This file is the handoff context for future Codex sessions. Read it before start
 
 ## Recommended Next Steps
 1. Build new scenes directly under `src/directions/scenes/`.
-2. Remove more legacy animation state from `Graph`, `Grid`, and related classes where it still leaks into scene usage.
-3. Investigate whether `P2D` can be made reliable on Linux, or keep `JAVA2D` as a supported fallback.
+2. Investigate whether `P2D` can be made reliable on Linux, or keep `JAVA2D` as a supported fallback.
+
+The old "remove legacy animation state from `Graph` / `Grid`" step is obsolete:
+PR #16 moved both classes (and the rest of the pre-DataGrid code) into
+`legacy/`, outside the build. Active `src/geom/` is just `DataGrid` and
+`ValueBand`.
 
 The old "reduce debug printing" step is done (Aug 2026): `SVGConverter` no
 longer prints "transcoding <file>" per TeX transcode and folds the failure
