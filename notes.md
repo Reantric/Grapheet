@@ -321,6 +321,21 @@ This file is the handoff context for future Codex sessions. Read it before start
   Xvfb/JAVA2D with frame-by-frame visual inspection. Known cosmetic niceties
   left open: head-label stack can crowd when 6 lines converge, and faint
   next-family ticks are visible mid-crossfade by design.
+- Major-win blurbs (feature/cs2-major-blurbs): `src/data/cs2/majors.csv`
+  (`date,event,winner,mvp`; winner is a CSV team key = logo filename). Real
+  results Kraków 2017 -> Budapest 2025; the 2025 events (Vitality back-to-back,
+  ZywOo MVPs) were verified by web search Aug 2026. The card sits bottom-left
+  of the plot: gold accent bar, gold event title, team logo +
+  "<Team> win the Major", optional MVP line tinted in the racer's line colour
+  when the MVP is in the race (grey otherwise, e.g. Magisk/jL). Envelope
+  in/hold/out = 0.45/3.6/0.7 s of SCENE time — at fast preview speeds the date
+  readout visibly advances past the event while the card holds; normal at
+  85ms/day. Winning-team lines (via `Track.teamAt(event day)` + isActiveAt
+  guard) get a soft halo pass + small stroke boost, eased at 10/s toward the
+  card envelope. Events dated outside the data range are skipped at load with
+  a console note: IEM Cologne Major 2026 (Jun 21 — Falcons, NiKo's first
+  Major, m0NESY MVP) is on file but the dataset's last knot is Jun 1, 2026;
+  extending the generator END past Jun 21 would make it the video's finale.
 
 ## Recommended Next Steps
 1. Build new scenes directly under `src/directions/scenes/`.

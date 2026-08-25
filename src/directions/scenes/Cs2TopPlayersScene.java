@@ -122,6 +122,16 @@ public final class Cs2TopPlayersScene extends Scene {
     private static final DateTimeFormatter DATE_READOUT =
             DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH);
 
+    /** Major-win blurbs: {@code src/data/cs2/majors.csv} (date,event,winner,mvp). */
+    private static final String MAJORS_PATH = "src/data/cs2/majors.csv";
+    private static final double BLURB_IN_SECONDS = 0.45;
+    private static final double BLURB_HOLD_SECONDS = 3.6;
+    private static final double BLURB_OUT_SECONDS = 0.7;
+    /** Extra stroke width the winners' lines gain while their blurb shows. */
+    private static final float MAJOR_GLOW_STROKE_PX = 1.6f;
+    /** Width of the soft halo pass drawn under a glowing line. */
+    private static final float MAJOR_HALO_EXTRA_PX = 9f;
+
     private final DataGrid grid;
     private final List<Track> tracks;
     private final LocalDate dayZero;
@@ -139,6 +149,10 @@ public final class Cs2TopPlayersScene extends Scene {
 
     private Track leader;
     private double leaderSinceDay;
+    private final List<MajorEvent> majors;
+    private int nextMajorIndex;
+    private MajorEvent activeMajor;
+    private double majorElapsed;
     /** Persistent head-label queue order (highest rating first). */
     private final List<Track> labelOrder = new ArrayList<>();
     private final Map<String, PImage> teamLogos = new LinkedHashMap<>();
@@ -172,6 +186,7 @@ public final class Cs2TopPlayersScene extends Scene {
             maxDay = Math.max(maxDay, track.lastDay);
         }
         endDay = maxDay;
+        majors = loadMajors(MAJORS_PATH, dayZero, endDay);
 
         grid = new DataGrid(applet());
         grid.setXCalendarAxis(dayZero);
@@ -205,11 +220,15 @@ public final class Cs2TopPlayersScene extends Scene {
         endHoldElapsed = 0;
         followMarginPx = 320f;
         labelOrder.clear();
+        nextMajorIndex = 0;
+        activeMajor = null;
+        majorElapsed = 0;
         for (Track track : tracks) {
             track.labelInitialised = false;
             track.labelAlpha = 0f;
             track.lastQueueSwapSeconds = Double.NEGATIVE_INFINITY;
             track.strokeBoost = 0f;
+            track.majorGlow = 0f;
         }
         grid.setDomain(0, WINDOW_DAYS, yShownMin, yShownMax);
         grid.setRailCollapseRatchet(true);
@@ -229,6 +248,7 @@ public final class Cs2TopPlayersScene extends Scene {
         addNode(this::drawHeadLabels);
         addNode(Nodes.of(this::drawLeaderHeader));
         addNode(Nodes.of(this::drawDateReadout));
+        addNode(Nodes.of(this::drawMajorCard));
 
         return Actions.update(this::isFinished);
     }
@@ -261,7 +281,46 @@ public final class Cs2TopPlayersScene extends Scene {
         grid.setXRange(visibleXMin, visibleXMin + visibleXSpan);
 
         updateRanking(dt);
+        updateMajors(dt);
         updateYFit(dt);
+    }
+
+    /**
+     * Advance the major-win blurb: fire the next event once "now" crosses its
+     * final date, run the card's in/hold/out envelope on scene time, and ease
+     * the winners' line glow toward that envelope. Majors are months apart at
+     * any sane playback speed, so one card slot is enough — a new event simply
+     * replaces a (long-finished) predecessor.
+     */
+    private void updateMajors(double dt) {
+        if (activeMajor != null) {
+            majorElapsed += dt;
+            if (majorElapsed >= BLURB_IN_SECONDS + BLURB_HOLD_SECONDS + BLURB_OUT_SECONDS) {
+                activeMajor = null;
+            }
+        }
+        while (nextMajorIndex < majors.size() && tDay >= majors.get(nextMajorIndex).day) {
+            activeMajor = majors.get(nextMajorIndex++);
+            majorElapsed = 0;
+        }
+        float envelope = majorCardAlpha();
+        for (Track track : tracks) {
+            boolean winner = activeMajor != null
+                    && track.isActiveAt(activeMajor.day)
+                    && activeMajor.team.equals(track.teamAt(activeMajor.day));
+            track.majorGlow = ease(track.majorGlow, winner ? envelope : 0f, dt, 10f);
+        }
+    }
+
+    /** Card opacity envelope: smooth in over {@link #BLURB_IN_SECONDS}, hold, smooth out. */
+    private float majorCardAlpha() {
+        if (activeMajor == null) {
+            return 0f;
+        }
+        double total = BLURB_IN_SECONDS + BLURB_HOLD_SECONDS + BLURB_OUT_SECONDS;
+        double in = clamp01(majorElapsed / BLURB_IN_SECONDS);
+        double out = clamp01((total - majorElapsed) / BLURB_OUT_SECONDS);
+        return (float) Math.min(smoothstep(in), smoothstep(out));
     }
 
     /**
@@ -447,16 +506,16 @@ public final class Cs2TopPlayersScene extends Scene {
             }
 
             p.noFill();
-            strokeTrack(track, lineAlpha);
-            p.strokeWeight(LINE_STROKE_PX + 1.8f * track.strokeBoost);
-            p.beginShape();
-            for (double d = lo; d < hi; d += stepDays) {
-                p.vertex(grid.domainToCanvasX(d),
-                        clamp(grid.domainToCanvasY(track.spline.value(d)), plotTop, plotBottom));
+            // Soft halo pass under a Major winner's line while its blurb is up.
+            if (track.majorGlow > 0.02f) {
+                strokeTrack(track, lineAlpha * 0.30f * track.majorGlow);
+                p.strokeWeight(LINE_STROKE_PX + MAJOR_HALO_EXTRA_PX);
+                traceTrack(track, lo, hi, stepDays, plotTop, plotBottom);
             }
-            p.vertex(grid.domainToCanvasX(hi),
-                    clamp(grid.domainToCanvasY(track.spline.value(hi)), plotTop, plotBottom));
-            p.endShape();
+            strokeTrack(track, lineAlpha);
+            p.strokeWeight(LINE_STROKE_PX + 1.8f * track.strokeBoost
+                    + MAJOR_GLOW_STROKE_PX * track.majorGlow);
+            traceTrack(track, lo, hi, stepDays, plotTop, plotBottom);
 
             if (headDay >= xLo && headDay <= xHi && tDay >= track.firstDay) {
                 float hx = grid.domainToCanvasX(headDay);
@@ -467,6 +526,18 @@ public final class Cs2TopPlayersScene extends Scene {
                 p.circle(hx, hy, HEAD_DOT_PX + 3f * track.strokeBoost);
             }
         }
+    }
+
+    private void traceTrack(Track track, double lo, double hi, double stepDays,
+                            float plotTop, float plotBottom) {
+        p.beginShape();
+        for (double d = lo; d < hi; d += stepDays) {
+            p.vertex(grid.domainToCanvasX(d),
+                    clamp(grid.domainToCanvasY(track.spline.value(d)), plotTop, plotBottom));
+        }
+        p.vertex(grid.domainToCanvasX(hi),
+                clamp(grid.domainToCanvasY(track.spline.value(hi)), plotTop, plotBottom));
+        p.endShape();
     }
 
     private void drawHeadLabels(SceneContext ctx) {
@@ -870,6 +941,95 @@ public final class Cs2TopPlayersScene extends Scene {
     }
 
     /**
+     * Major-win blurb card, bottom-left of the plot: gold accent bar, event
+     * name, "<Team> win the Major" with the team logo, and an MVP line when
+     * the CSV names one (tinted in the racer's line colour when the MVP is in
+     * the race). Slides up while fading in; the out phase is a pure fade.
+     */
+    private void drawMajorCard() {
+        float alpha = majorCardAlpha();
+        if (activeMajor == null || alpha <= 0.01f) {
+            return;
+        }
+        Applet p = applet();
+        ensureFont();
+        p.textFont(font);
+
+        MajorEvent major = activeMajor;
+        String headline = major.team + " win the Major";
+        PImage logo = teamLogoFor(major.team);
+        Track mvpTrack = major.mvp.isEmpty() ? null : trackByName(major.mvp);
+        String mvpText = major.mvp.isEmpty() ? null : "MVP: " + major.mvp;
+
+        float slide = (1f - (float) smoothstep(clamp01(majorElapsed / BLURB_IN_SECONDS))) * 30f;
+
+        float logoBox = 46f;
+        float logoSpace = logo != null ? logoBox + 14f : 0f;
+        p.textSize(34);
+        float titleWidth = p.textWidth(major.event);
+        float mvpWidth = mvpText != null ? p.textWidth(mvpText) : 0f;
+        p.textSize(46);
+        float headWidth = p.textWidth(headline);
+
+        float contentWidth = Math.max(titleWidth, Math.max(headWidth + logoSpace, mvpWidth));
+        float titleBlock = 44f;
+        float headBlock = 58f;
+        float mvpBlock = mvpText != null ? 44f : 0f;
+        float pad = 16f;
+        float cardHeight = pad + titleBlock + headBlock + mvpBlock + pad;
+
+        float left = grid.getPlotLeft() + 28f;
+        float bottom = grid.getPlotTop() + grid.getPlotHeight() - 26f + slide;
+        float top = bottom - cardHeight;
+
+        // Backing panel (slightly denser than the HUD panels — this card sits
+        // over gridlines and series, not empty margin) plus a gold accent bar.
+        p.noStroke();
+        p.fill(0, 0, 0, (HUD_PANEL_ALPHA + 15f) * alpha);
+        p.rect(left - 18f, top, left + contentWidth + 18f, bottom);
+        p.fill(45, 75, 95, 90f * alpha);
+        p.rect(left - 26f, top, left - 18f, bottom);
+
+        float y = top + pad;
+        p.textAlign(Applet.LEFT, Applet.TOP);
+        p.textSize(34);
+        p.fill(45, 55, 96, 96f * alpha);
+        p.text(major.event, left, y);
+        y += titleBlock;
+
+        float textX = left;
+        if (logo != null) {
+            drawTeamLogo(logo, textX, y + 24f, logoBox, alpha);
+            textX += logoSpace;
+        }
+        p.textSize(46);
+        p.fill(0, 0, 100, 100f * alpha);
+        p.text(headline, textX, y);
+        y += headBlock;
+
+        if (mvpText != null) {
+            p.textSize(34);
+            if (mvpTrack != null) {
+                Color c = mvpTrack.color;
+                p.fill(c.getHue().getValue(), c.getSaturation().getValue(),
+                        c.getBrightness().getValue(), 100f * alpha);
+            } else {
+                p.fill(0, 0, 88, 96f * alpha);
+            }
+            p.text(mvpText, left, y);
+        }
+    }
+
+    private Track trackByName(String name) {
+        for (Track track : tracks) {
+            if (track.name.equals(name)) {
+                return track;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Optional avatar thumbnails: drop {@code src/data/cs2/avatars/<name>.png}
      * into the repo and it shows up next to the head label and in the leader
      * header. Missing files are simply skipped.
@@ -935,6 +1095,47 @@ public final class Cs2TopPlayersScene extends Scene {
     // ------------------------------------------------------------------
     // Data loading
     // ------------------------------------------------------------------
+
+    /**
+     * {@code date,event,winner,mvp} rows; the winner column is a CSV team key
+     * (logo filename / {@code Track.teamAt} vocabulary). Events dated outside
+     * the dataset range are skipped with a console note — e.g. a Major whose
+     * final lands after the last data knot can stay on file for a future
+     * dataset extension without ever firing.
+     */
+    private static List<MajorEvent> loadMajors(String path, LocalDate dayZero, double endDay) {
+        Path file = Path.of(path);
+        if (!Files.exists(file)) {
+            return List.of();
+        }
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(file);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read " + path, e);
+        }
+        List<MajorEvent> events = new ArrayList<>();
+        for (String line : lines.subList(Math.min(1, lines.size()), lines.size())) {
+            if (line.isBlank()) {
+                continue;
+            }
+            String[] parts = line.split(",", -1);
+            if (parts.length < 3) {
+                throw new IllegalStateException(path + ": bad row \"" + line + "\"");
+            }
+            double day = ChronoUnit.DAYS.between(dayZero, LocalDate.parse(parts[0].trim()));
+            String event = parts[1].trim();
+            String team = parts[2].trim();
+            String mvp = parts.length > 3 ? parts[3].trim() : "";
+            if (day < 0 || day > endDay) {
+                System.out.println("Major outside dataset range, skipped: " + event);
+                continue;
+            }
+            events.add(new MajorEvent(day, event, team, mvp));
+        }
+        events.sort(Comparator.comparingDouble(e -> e.day));
+        return events;
+    }
 
     private static List<Track> loadTracks(String path) {
         List<String> lines;
@@ -1068,6 +1269,7 @@ public final class Cs2TopPlayersScene extends Scene {
         private boolean labelInitialised;
         private double lastQueueSwapSeconds = Double.NEGATIVE_INFINITY;
         private float strokeBoost;
+        private float majorGlow;
         private PImage avatar;
         private boolean avatarChecked;
 
@@ -1108,6 +1310,21 @@ public final class Cs2TopPlayersScene extends Scene {
 
         private boolean isActiveAt(double day) {
             return day >= firstDay && day <= lastDay + RANK_GRACE_DAYS;
+        }
+    }
+
+    /** One row of {@code majors.csv}, rebased to days since {@code dayZero}. */
+    private static final class MajorEvent {
+        private final double day;
+        private final String event;
+        private final String team;
+        private final String mvp;
+
+        private MajorEvent(double day, String event, String team, String mvp) {
+            this.day = day;
+            this.event = event;
+            this.team = team;
+            this.mvp = mvp;
         }
     }
 }
