@@ -14,7 +14,14 @@ build/
 out/
 temp/
 test/
+output/
 *.mp4
+
+# Ignore IDE (Eclipse/VS Code Java) compiler output.
+bin/
+
+# Ignore macOS Finder metadata.
+.DS_Store
 
 .gitattributes
 
