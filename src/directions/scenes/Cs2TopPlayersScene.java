@@ -7,6 +7,7 @@ import directions.engine.Nodes;
 import directions.engine.Scene;
 import directions.engine.SceneContext;
 import geom.DataGrid;
+import geom.ValueBand;
 import processing.core.PFont;
 import processing.core.PImage;
 import storage.Color;
@@ -211,6 +212,38 @@ public final class Cs2TopPlayersScene extends Scene {
         // The follow camera is one-way: once the y-axis has collapsed away it
         // must not reappear during the final zoom-out.
         grid.setRailCollapseRatchet(true);
+        grid.setValueBands(buildRatingBands());
+        grid.showValueBandLabels(false);
+    }
+
+    /**
+     * HLTV-style rating strata as dark backdrop tints: on HLTV a rating
+     * displays red at <= 0.96 ("poor") and green at >= 1.13 ("good"), with
+     * the in-between "okay" zone kept near-neutral amber here so the mid
+     * range reads as ground, not signal. The cutoffs are read off HLTV's own
+     * red/yellow/green rating colouring (not officially documented). Fills
+     * are dimmer than the CF tier bands — this chart is otherwise pure
+     * black, and the line colours must keep top billing.
+     */
+    private static List<ValueBand> buildRatingBands() {
+        Object[][] strata = {
+                // label, colour, lo, hi, fill brightness, fill alpha
+                {"Poor", "#e04747", -1.0e6, 0.96, 26f, 40f},
+                {"Okay", "#d9a437", 0.96, 1.13, 15f, 34f},
+                {"Good", "#4faf5a", 1.13, 1.0e6, 24f, 38f},
+        };
+        List<ValueBand> bands = new ArrayList<>();
+        for (Object[] stratum : strata) {
+            Color base = Color.fromCss((String) stratum[1]);
+            float h = base.getHue().getValue();
+            float s = base.getSaturation().getValue();
+            float b = base.getBrightness().getValue();
+            Color fill = new Color(h, s * 0.85f, (Float) stratum[4], (Float) stratum[5]);
+            Color edge = new Color(h, s, Math.min(100f, b + 30f), 50f);
+            bands.add(new ValueBand((Double) stratum[2], (Double) stratum[3],
+                    fill, edge, (String) stratum[0]));
+        }
+        return bands;
     }
 
     @Override
