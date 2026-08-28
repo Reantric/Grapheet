@@ -324,18 +324,25 @@ This file is the handoff context for future Codex sessions. Read it before start
 - Major-win blurbs (feature/cs2-major-blurbs): `src/data/cs2/majors.csv`
   (`date,event,winner,mvp`; winner is a CSV team key = logo filename). Real
   results Kraków 2017 -> Budapest 2025; the 2025 events (Vitality back-to-back,
-  ZywOo MVPs) were verified by web search Aug 2026. The card sits bottom-left
-  of the plot: gold accent bar, gold event title, team logo +
-  "<Team> win the Major", optional MVP line tinted in the racer's line colour
-  when the MVP is in the race (grey otherwise, e.g. Magisk/jL). Envelope
-  in/hold/out = 0.45/3.6/0.7 s of SCENE time — at fast preview speeds the date
-  readout visibly advances past the event while the card holds; normal at
-  85ms/day. Winning-team lines (via `Track.teamAt(event day)` + isActiveAt
-  guard) get a soft halo pass + small stroke boost, eased at 10/s toward the
-  card envelope. Events dated outside the data range are skipped at load with
-  a console note: IEM Cologne Major 2026 (Jun 21 — Falcons, NiKo's first
-  Major, m0NESY MVP) is on file but the dataset's last knot is Jun 1, 2026;
-  extending the generator END past Jun 21 would make it the video's finale.
+  ZywOo MVPs) were verified by web search Aug 2026. Each event is pinned to
+  the chart at domain-space (final date, anchor rating) — a Major is a moment
+  in time, so the marker rides the follow scroll, y-rescales, and the final
+  zoom-out. Anchor preference: MVP's line point when the MVP is a racer, else
+  the winning team's highest-rated racer that day (Katowice -> dev1ce), else
+  free space below the pack (Kraków/Boston/Antwerp/Rio — no racer on those
+  rosters). Animation: gold diamond pops in (easeOutBack, 0.28s), the card
+  unfolds LEFTWARD from the pin (into history, away from the head-label
+  column; right-aligned text, gold accent bar on the pin side, stem to the
+  diamond) over 0.4s, holds 3.0s, then folds back (0.45s) into a PERSISTENT
+  gold diamond + 26px mini team logo — by the final zoom-out all fired Majors
+  dot the decade. MVP line tinted in the racer's line colour when the MVP is
+  in the race (grey otherwise, e.g. Magisk/jL). Winning-team lines (via
+  `Track.teamAt(event day)` + isActiveAt guard) get a soft halo + stroke
+  boost eased toward the card's wipe envelope. Events dated outside the data
+  range are skipped at load with a console note: IEM Cologne Major 2026
+  (Jun 21 — Falcons, NiKo's first Major, m0NESY MVP) is on file but the
+  dataset's last knot is Jun 1, 2026; extending the generator END past
+  Jun 21 would make it the video's finale.
 
 ## Recommended Next Steps
 1. Build new scenes directly under `src/directions/scenes/`.
