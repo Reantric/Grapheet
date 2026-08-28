@@ -124,9 +124,18 @@ public final class Cs2TopPlayersScene extends Scene {
 
     /** Major-win blurbs: {@code src/data/cs2/majors.csv} (date,event,winner,mvp). */
     private static final String MAJORS_PATH = "src/data/cs2/majors.csv";
-    private static final double BLURB_IN_SECONDS = 0.45;
-    private static final double BLURB_HOLD_SECONDS = 3.6;
-    private static final double BLURB_OUT_SECONDS = 0.7;
+    /** Pin-pop (easeOutBack scale-in of the gold diamond). */
+    private static final double BLURB_POP_SECONDS = 0.28;
+    /** Card wipe-out from the pin, starting slightly into the pop. */
+    private static final double BLURB_UNFOLD_START = 0.12;
+    private static final double BLURB_UNFOLD_SECONDS = 0.40;
+    private static final double BLURB_HOLD_SECONDS = 3.0;
+    /** Card folds back into the persistent diamond + mini-logo marker. */
+    private static final double BLURB_FOLD_SECONDS = 0.45;
+    /** Half-diagonal of the persistent gold pin diamond. */
+    private static final float PIN_DIAMOND_PX = 11f;
+    /** Box the persistent marker's mini team logo is fitted into. */
+    private static final float PIN_LOGO_BOX_PX = 26f;
     /** Extra stroke width the winners' lines gain while their blurb shows. */
     private static final float MAJOR_GLOW_STROKE_PX = 1.6f;
     /** Width of the soft halo pass drawn under a glowing line. */
@@ -223,6 +232,9 @@ public final class Cs2TopPlayersScene extends Scene {
         nextMajorIndex = 0;
         activeMajor = null;
         majorElapsed = 0;
+        for (MajorEvent major : majors) {
+            major.fired = false;
+        }
         for (Track track : tracks) {
             track.labelInitialised = false;
             track.labelAlpha = 0f;
@@ -245,10 +257,11 @@ public final class Cs2TopPlayersScene extends Scene {
             grid.render();
         }));
         addNode(Nodes.of(this::drawSeries));
+        // Pins render over the series but under the head labels and HUD.
+        addNode(Nodes.of(this::drawMajorPins));
         addNode(this::drawHeadLabels);
         addNode(Nodes.of(this::drawLeaderHeader));
         addNode(Nodes.of(this::drawDateReadout));
-        addNode(Nodes.of(this::drawMajorCard));
 
         return Actions.update(this::isFinished);
     }
@@ -287,23 +300,27 @@ public final class Cs2TopPlayersScene extends Scene {
 
     /**
      * Advance the major-win blurb: fire the next event once "now" crosses its
-     * final date, run the card's in/hold/out envelope on scene time, and ease
-     * the winners' line glow toward that envelope. Majors are months apart at
-     * any sane playback speed, so one card slot is enough — a new event simply
-     * replaces a (long-finished) predecessor.
+     * final date, pinning it to a domain-space anchor point, run the card's
+     * pop/unfold/hold/fold envelope on scene time, and ease the winners' line
+     * glow toward that envelope. Majors are months apart at any sane playback
+     * speed, so one active-card slot is enough — fired events persist as
+     * markers regardless.
      */
     private void updateMajors(double dt) {
         if (activeMajor != null) {
             majorElapsed += dt;
-            if (majorElapsed >= BLURB_IN_SECONDS + BLURB_HOLD_SECONDS + BLURB_OUT_SECONDS) {
+            if (majorElapsed >= BLURB_UNFOLD_START + BLURB_UNFOLD_SECONDS
+                    + BLURB_HOLD_SECONDS + BLURB_FOLD_SECONDS) {
                 activeMajor = null;
             }
         }
         while (nextMajorIndex < majors.size() && tDay >= majors.get(nextMajorIndex).day) {
             activeMajor = majors.get(nextMajorIndex++);
+            activeMajor.fired = true;
+            activeMajor.anchorRating = pickAnchorRating(activeMajor);
             majorElapsed = 0;
         }
-        float envelope = majorCardAlpha();
+        float envelope = activeCardWipe();
         for (Track track : tracks) {
             boolean winner = activeMajor != null
                     && track.isActiveAt(activeMajor.day)
@@ -312,15 +329,55 @@ public final class Cs2TopPlayersScene extends Scene {
         }
     }
 
-    /** Card opacity envelope: smooth in over {@link #BLURB_IN_SECONDS}, hold, smooth out. */
-    private float majorCardAlpha() {
+    /**
+     * How far the active card is unfolded from its pin, 0..1: wipes out after
+     * the pin pops, holds at 1, folds back to 0 as the card collapses into
+     * the persistent marker. Doubles as the line-glow envelope.
+     */
+    private float activeCardWipe() {
         if (activeMajor == null) {
             return 0f;
         }
-        double total = BLURB_IN_SECONDS + BLURB_HOLD_SECONDS + BLURB_OUT_SECONDS;
-        double in = clamp01(majorElapsed / BLURB_IN_SECONDS);
-        double out = clamp01((total - majorElapsed) / BLURB_OUT_SECONDS);
-        return (float) Math.min(smoothstep(in), smoothstep(out));
+        double out = smoothstep(clamp01(
+                (majorElapsed - BLURB_UNFOLD_START) / BLURB_UNFOLD_SECONDS));
+        double foldStart = BLURB_UNFOLD_START + BLURB_UNFOLD_SECONDS + BLURB_HOLD_SECONDS;
+        double fold = smoothstep(clamp01((majorElapsed - foldStart) / BLURB_FOLD_SECONDS));
+        return (float) (out * (1.0 - fold));
+    }
+
+    /**
+     * Domain-space y the event pins to — a Major is a moment in time, so the
+     * marker lives ON the chart at its final date. Preference order: the
+     * MVP's line point when the MVP is in the race, else the winning team's
+     * highest-rated racer that day, else free space below the pack (events
+     * whose roster contains no racer at all, e.g. Kraków 2017).
+     */
+    private double pickAnchorRating(MajorEvent major) {
+        Track mvp = major.mvp.isEmpty() ? null : trackByName(major.mvp);
+        if (mvp != null && mvp.isActiveAt(major.day)) {
+            return mvp.spline.value(Math.min(major.day, mvp.lastDay));
+        }
+        double bestValue = Double.NEGATIVE_INFINITY;
+        for (Track track : tracks) {
+            if (track.isActiveAt(major.day) && major.team.equals(track.teamAt(major.day))) {
+                bestValue = Math.max(bestValue,
+                        track.spline.value(Math.min(major.day, track.lastDay)));
+            }
+        }
+        if (bestValue > Double.NEGATIVE_INFINITY) {
+            return bestValue;
+        }
+        double packMin = Double.POSITIVE_INFINITY;
+        for (Track track : tracks) {
+            if (track.isActiveAt(major.day)) {
+                packMin = Math.min(packMin,
+                        track.spline.value(Math.min(major.day, track.lastDay)));
+            }
+        }
+        if (packMin == Double.POSITIVE_INFINITY) {
+            return (yShownMin + yShownMax) / 2;
+        }
+        return packMin - (yShownMax - yShownMin) * 0.12;
     }
 
     /**
@@ -941,27 +998,85 @@ public final class Cs2TopPlayersScene extends Scene {
     }
 
     /**
-     * Major-win blurb card, bottom-left of the plot: gold accent bar, event
-     * name, "<Team> win the Major" with the team logo, and an MVP line when
-     * the CSV names one (tinted in the racer's line colour when the MVP is in
-     * the race). Slides up while fading in; the out phase is a pure fade.
+     * World-anchored Major pins and the active blurb card. Every fired event
+     * owns a gold diamond pinned at domain-space (final date, anchor rating),
+     * so it rides the chart through follow scrolling, y-rescales, and the
+     * final zoom-out — by the end the full history is dotted with Majors.
+     * The active event's card unfolds leftward from its pin (into history,
+     * away from the head-label column), holds, then folds back; the mini
+     * team logo fades in above the diamond as the card collapses.
      */
-    private void drawMajorCard() {
-        float alpha = majorCardAlpha();
-        if (activeMajor == null || alpha <= 0.01f) {
-            return;
-        }
+    private void drawMajorPins() {
         Applet p = applet();
         ensureFont();
         p.textFont(font);
 
-        MajorEvent major = activeMajor;
+        float plotLeft = grid.getPlotLeft();
+        float plotRight = plotLeft + grid.getPlotWidth();
+        float plotTop = grid.getPlotTop();
+        float plotBottom = plotTop + grid.getPlotHeight();
+
+        for (MajorEvent major : majors) {
+            if (!major.fired) {
+                continue;
+            }
+            float px = grid.domainToCanvasX(major.day);
+            if (px < plotLeft - 20f || px > plotRight + 20f) {
+                continue;
+            }
+            float py = clamp(grid.domainToCanvasY(major.anchorRating),
+                    plotTop + 24f, plotBottom - 18f);
+
+            boolean active = major == activeMajor;
+            float pop = active
+                    ? easeOutBack(clamp01F((float) (majorElapsed / BLURB_POP_SECONDS)))
+                    : 1f;
+            float diamond = PIN_DIAMOND_PX * pop;
+
+            // Mini logo: fades in as the active card folds; permanent after.
+            float logoAlpha = 1f;
+            if (active) {
+                double foldStart = BLURB_UNFOLD_START + BLURB_UNFOLD_SECONDS + BLURB_HOLD_SECONDS;
+                logoAlpha = (float) smoothstep(clamp01(
+                        (majorElapsed - foldStart) / BLURB_FOLD_SECONDS));
+            }
+
+            p.noStroke();
+            p.fill(45, 75, 95, 92f);
+            p.quad(px, py - diamond, px + diamond, py, px, py + diamond, px - diamond, py);
+
+            if (logoAlpha > 0.02f) {
+                PImage logo = teamLogoFor(major.team);
+                if (logo != null) {
+                    drawTeamLogo(logo, px - PIN_LOGO_BOX_PX / 2f,
+                            py - diamond - 10f - PIN_LOGO_BOX_PX / 2f, PIN_LOGO_BOX_PX, logoAlpha);
+                }
+            }
+
+            if (active) {
+                drawMajorCardAt(major, px, py, diamond, plotTop, plotBottom);
+            }
+        }
+    }
+
+    /**
+     * The active card, unfolding leftward from the pin at {@code (px, py)}:
+     * gold accent bar on the pin side, a vertical stem down/up to the
+     * diamond, right-aligned text revealed as the panel wipes open.
+     */
+    private void drawMajorCardAt(MajorEvent major, float px, float py, float diamond,
+                                 float plotTop, float plotBottom) {
+        float wipe = activeCardWipe();
+        if (wipe <= 0.01f) {
+            return;
+        }
+        Applet p = applet();
+        float textAlpha = clamp01F((wipe - 0.5f) / 0.5f) * 100f;
+
         String headline = major.team + " win the Major";
         PImage logo = teamLogoFor(major.team);
         Track mvpTrack = major.mvp.isEmpty() ? null : trackByName(major.mvp);
         String mvpText = major.mvp.isEmpty() ? null : "MVP: " + major.mvp;
-
-        float slide = (1f - (float) smoothstep(clamp01(majorElapsed / BLURB_IN_SECONDS))) * 30f;
 
         float logoBox = 46f;
         float logoSpace = logo != null ? logoBox + 14f : 0f;
@@ -978,33 +1093,57 @@ public final class Cs2TopPlayersScene extends Scene {
         float pad = 16f;
         float cardHeight = pad + titleBlock + headBlock + mvpBlock + pad;
 
-        float left = grid.getPlotLeft() + 28f;
-        float bottom = grid.getPlotTop() + grid.getPlotHeight() - 26f + slide;
+        // The card hangs directly above its pin (below when cramped), its
+        // right edge just past the pin so the stem reads as attached.
+        float right = px + 12f;
+        float bottom = py - diamond - 24f;
         float top = bottom - cardHeight;
+        boolean below = top < plotTop + 14f;
+        if (below) {
+            top = py + diamond + 24f;
+            bottom = top + cardHeight;
+            if (bottom > plotBottom - 14f) {
+                float shift = bottom - (plotBottom - 14f);
+                top -= shift;
+                bottom -= shift;
+            }
+        }
+        float accentLeft = right - 7f;
+        float contentRight = accentLeft - pad;
+        float fullLeft = contentRight - contentWidth - pad;
+        float wipedLeft = right - (right - fullLeft) * wipe;
 
-        // Backing panel (slightly denser than the HUD panels — this card sits
-        // over gridlines and series, not empty margin) plus a gold accent bar.
+        // Stem from the card to the diamond, then panel + gold accent bar.
+        p.stroke(45, 75, 95, 90f * wipe);
+        p.strokeWeight(2.5f);
+        if (below) {
+            p.line(px, top, px, py + diamond);
+        } else {
+            p.line(px, bottom, px, py - diamond);
+        }
         p.noStroke();
-        p.fill(0, 0, 0, (HUD_PANEL_ALPHA + 15f) * alpha);
-        p.rect(left - 18f, top, left + contentWidth + 18f, bottom);
-        p.fill(45, 75, 95, 90f * alpha);
-        p.rect(left - 26f, top, left - 18f, bottom);
+        p.fill(0, 0, 0, (HUD_PANEL_ALPHA + 22f) * wipe);
+        p.rect(wipedLeft, top, accentLeft, bottom);
+        p.fill(45, 75, 95, 92f * wipe);
+        p.rect(accentLeft, top, right, bottom);
 
+        if (textAlpha <= 1f) {
+            return;
+        }
         float y = top + pad;
-        p.textAlign(Applet.LEFT, Applet.TOP);
+        p.textAlign(Applet.RIGHT, Applet.TOP);
         p.textSize(34);
-        p.fill(45, 55, 96, 96f * alpha);
-        p.text(major.event, left, y);
+        p.fill(45, 55, 96, 0.96f * textAlpha);
+        p.text(major.event, contentRight, y);
         y += titleBlock;
 
-        float textX = left;
-        if (logo != null) {
-            drawTeamLogo(logo, textX, y + 24f, logoBox, alpha);
-            textX += logoSpace;
-        }
         p.textSize(46);
-        p.fill(0, 0, 100, 100f * alpha);
-        p.text(headline, textX, y);
+        p.fill(0, 0, 100, textAlpha);
+        p.text(headline, contentRight, y);
+        if (logo != null) {
+            drawTeamLogo(logo, contentRight - headWidth - logoSpace,
+                    y + 24f, logoBox, textAlpha / 100f);
+        }
         y += headBlock;
 
         if (mvpText != null) {
@@ -1012,11 +1151,11 @@ public final class Cs2TopPlayersScene extends Scene {
             if (mvpTrack != null) {
                 Color c = mvpTrack.color;
                 p.fill(c.getHue().getValue(), c.getSaturation().getValue(),
-                        c.getBrightness().getValue(), 100f * alpha);
+                        c.getBrightness().getValue(), textAlpha);
             } else {
-                p.fill(0, 0, 88, 96f * alpha);
+                p.fill(0, 0, 88, 0.96f * textAlpha);
             }
-            p.text(mvpText, left, y);
+            p.text(mvpText, contentRight, y);
         }
     }
 
@@ -1232,6 +1371,14 @@ public final class Cs2TopPlayersScene extends Scene {
         return value * value * (3 - 2 * value);
     }
 
+    /** Ease-out with a slight overshoot past 1 — the pin-pop "settle". */
+    private static float easeOutBack(float t) {
+        float c1 = 1.70158f;
+        float c3 = c1 + 1f;
+        float u = t - 1f;
+        return 1f + c3 * u * u * u + c1 * u * u;
+    }
+
     private static final class TrackBuilder {
         private final String name;
         private final String color;
@@ -1319,6 +1466,11 @@ public final class Cs2TopPlayersScene extends Scene {
         private final String event;
         private final String team;
         private final String mvp;
+
+        /** Set once "now" crosses the final date; the pin persists after. */
+        private boolean fired;
+        /** Domain-space y the pin is glued to, chosen at fire time. */
+        private double anchorRating;
 
         private MajorEvent(double day, String event, String team, String mvp) {
             this.day = day;
